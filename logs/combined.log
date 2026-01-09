@@ -1,0 +1,38 @@
+{"level":"info","message":"Exportador MSMall Service started.","timestamp":"2025-12-16T16:27:08.634Z"}
+{"level":"info","message":"Configuration loaded successfully.","timestamp":"2025-12-16T16:27:08.638Z"}
+{"level":"info","message":"Running in CLI mode (Run Once).","timestamp":"2025-12-16T16:27:08.638Z"}
+{"level":"info","message":"Starting job: DailySales","timestamp":"2025-12-16T16:27:08.639Z"}
+{"level":"info","message":"Configuration loaded successfully.","timestamp":"2025-12-16T16:27:08.639Z"}
+{"level":"info","message":"Creating connection for provider: sqlserver","timestamp":"2025-12-16T16:27:08.639Z"}
+{"level":"info","message":"Configuration Dashboard running at http://localhost:3000","timestamp":"2025-12-16T16:27:08.644Z"}
+{"level":"error","message":"Failed to connect to database: Failed to connect to localhost:1433 - Could not connect (sequence)","timestamp":"2025-12-16T16:27:08.647Z"}
+{"level":"info","message":"[HiOffice] Starting Push Job: TestJob","timestamp":"2025-12-28T19:58:49.832Z"}
+{"level":"info","message":"[HiOffice] Authenticating...","timestamp":"2025-12-28T19:58:49.834Z"}
+{"level":"info","message":"[MOCK FETCH] GET https://cloudlicense.icg.eu/services/cloud/getCustomerWithAuthToken?email=test&password=test&isoLanguage=es","timestamp":"2025-12-28T19:58:49.834Z"}
+{"level":"info","message":"[HiOffice] Authentication successful.","timestamp":"2025-12-28T19:58:49.834Z"}
+{"level":"info","message":"[HiOffice] Building payload...","timestamp":"2025-12-28T19:58:49.834Z"}
+{"level":"info","message":"[HiOffice] Payload created at /Users/felixdiaz/.gemini/antigravity/playground/tensor-planetoid/exportador-msmall-node/exports/import_1766951929834.json","timestamp":"2025-12-28T19:58:49.835Z"}
+{"level":"info","message":"[HiOffice] Launching import 'Test Import'...","timestamp":"2025-12-28T19:58:49.835Z"}
+{"level":"info","message":"[MOCK FETCH] POST https://mock.cloud.com/bridge-back/api/import/Test%20Import/launchWithFile","timestamp":"2025-12-28T19:58:49.850Z"}
+{"level":"info","message":"[HiOffice] Import launched. UUID: mock-uuid-12345","timestamp":"2025-12-28T19:58:49.851Z"}
+{"level":"info","message":"[HiOffice] Polling status for mock-uuid-12345...","timestamp":"2025-12-28T19:58:49.851Z"}
+{"level":"info","message":"[MOCK FETCH] GET https://mock.cloud.com/bridge-back/api/import/mock-uuid-12345/status","timestamp":"2025-12-28T19:58:54.852Z"}
+{"level":"info","message":"[HiOffice] Import finished successfully. Inserted: 10, Updated: 5","timestamp":"2025-12-28T19:58:54.854Z"}
+{"level":"info","message":"[MOCK FETCH] GET https://mock.cloud.com/ErpCloud/session/logout","timestamp":"2025-12-28T19:58:54.855Z"}
+{"level":"info","message":"[HiOffice] Logged out.","timestamp":"2025-12-28T19:58:54.855Z"}
+{"level":"info","message":"Exportador MSMall Service started.","timestamp":"2025-12-28T20:07:27.651Z"}
+{"level":"info","message":"Configuration loaded successfully.","timestamp":"2025-12-28T20:07:27.655Z"}
+{"level":"info","message":"Running in CLI mode (Run Once).","timestamp":"2025-12-28T20:07:27.655Z"}
+{"level":"info","message":"Configuration loaded successfully.","timestamp":"2025-12-28T20:07:27.656Z"}
+{"level":"info","message":"Starting job: DailySales","timestamp":"2025-12-28T20:07:27.656Z"}
+{"level":"info","message":"Configuration loaded successfully.","timestamp":"2025-12-28T20:07:27.656Z"}
+{"level":"info","message":"Creating connection for provider: sqlserver","timestamp":"2025-12-28T20:07:27.656Z"}
+{"level":"info","message":"Configuration Dashboard running at http://localhost:3000","timestamp":"2025-12-28T20:07:27.662Z"}
+{"level":"error","message":"Failed to connect to database: Failed to connect to localhost:1433 - Could not connect (sequence)","timestamp":"2025-12-28T20:07:27.666Z"}
+{"level":"info","message":"Exportador MSMall Service started.","timestamp":"2025-12-28T20:19:23.774Z"}
+{"level":"info","message":"Configuration loaded successfully.","timestamp":"2025-12-28T20:19:23.777Z"}
+{"level":"info","message":"Running in Service mode (Cron).","timestamp":"2025-12-28T20:19:23.777Z"}
+{"level":"warn","message":"Job 'DailySales' has no schedule defined. Skipping.","timestamp":"2025-12-28T20:19:23.777Z"}
+{"level":"warn","message":"Job 'PushTicketsHiOffice' has no schedule defined. Skipping.","timestamp":"2025-12-28T20:19:23.777Z"}
+{"level":"info","message":"Configuration Dashboard running at http://localhost:3000","timestamp":"2025-12-28T20:19:23.778Z"}
+{"level":"info","message":"Configuration loaded successfully.","timestamp":"2025-12-28T20:20:23.401Z"}

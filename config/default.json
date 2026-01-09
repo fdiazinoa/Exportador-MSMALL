@@ -1,0 +1,61 @@
+{
+    "logging": {
+        "level": "info",
+        "filename": "logs/app.log"
+    },
+    "databases": {
+        "sqlserver_prod": {
+            "provider": "sqlserver",
+            "config": {
+                "user": "sa",
+                "password": "yourStrong(!)Password",
+                "server": "localhost",
+                "database": "TestDB",
+                "options": {
+                    "encrypt": true,
+                    "trustServerCertificate": true
+                }
+            }
+        },
+        "mysql_legacy": {
+            "provider": "mysql",
+            "config": {
+                "host": "localhost",
+                "user": "root",
+                "password": "password",
+                "database": "legacy_db"
+            }
+        }
+    },
+    "ftpServers": {
+        "ftp_main": {
+            "host": "ftp.example.com",
+            "user": "user",
+            "password": "password",
+            "secure": false
+        }
+    },
+    "jobs": [
+        {
+            "name": "DailySales",
+            "sourceConnection": "sqlserver_prod",
+            "query": "SELECT * FROM Sales WHERE Date >= DATEADD(day, -1, GETDATE())",
+            "format": "csv",
+            "destination": "ftp_main",
+            "mappingFile": "mappings/sales_map.json"
+        },
+        {
+            "name": "PushTicketsHiOffice",
+            "type": "hioffice_push",
+            "sourceConnection": "sqlserver_prod",
+            "query": "SELECT * FROM PendingTickets WHERE Status = 'Ready'",
+            "credentials": {
+                "email": "user@example.com",
+                "password": "securePassword",
+                "isoLanguage": "es"
+            },
+            "importId": "Importación Tíquets",
+            "payloadFormat": "json"
+        }
+    ]
+}
