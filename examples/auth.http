@@ -1,0 +1,122 @@
+@baseUrl = http://localhost:3000
+@mallId = MALL-1
+@localId = LOCAL-1
+
+### 1) Emitir app token (admin)
+POST {{baseUrl}}/api/auth/token
+Content-Type: application/json
+
+{
+  "grant_type": "password",
+  "token_type": "app",
+  "username": "admin",
+  "password": "admin123",
+  "mall_id": "{{mallId}}",
+  "scope": ["tokens:manage", "app:read", "mapping:read", "export:write"]
+}
+
+### Copia el access_token y pégalo aquí
+@adminBearer = REPLACE_ME
+
+### 2) Crear token exporter + client credentials (one-time reveal)
+POST {{baseUrl}}/api/tokens
+Content-Type: application/json
+Authorization: Bearer {{adminBearer}}
+
+{
+  "mall_id": "{{mallId}}",
+  "local_id": "{{localId}}",
+  "token_type": "exporter",
+  "scopes": ["export:write", "mapping:read"],
+  "provision_service_account": true
+}
+
+### 3) Emitir token exporter por client credentials
+POST {{baseUrl}}/api/auth/token
+Content-Type: application/json
+
+{
+  "grant_type": "client_credentials",
+  "token_type": "exporter",
+  "client_id": "REPLACE_CLIENT_ID",
+  "client_secret": "REPLACE_CLIENT_SECRET",
+  "scope": ["export:write"]
+}
+
+### Copia el access token exporter y pégalo aquí
+@exporterBearer = REPLACE_EXPORTER_ACCESS_TOKEN
+@refreshToken = REPLACE_EXPORTER_REFRESH_TOKEN
+
+### 4) Ingesta protegida (mall/local/mapping)
+POST {{baseUrl}}/api/ingest/payload
+Content-Type: application/json
+Authorization: Bearer {{exporterBearer}}
+
+{
+  "mall_id": "{{mallId}}",
+  "local_id": "{{localId}}",
+  "mapping_key": "sales",
+  "records": [
+    { "ticket_id": 1, "total": 100.50 }
+  ]
+}
+
+### 5) Refresh (rotation)
+POST {{baseUrl}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "{{refreshToken}}"
+}
+
+### 6) Revocar token actual (self revoke)
+POST {{baseUrl}}/api/auth/revoke
+Content-Type: application/json
+Authorization: Bearer {{exporterBearer}}
+
+{
+  "reason": "maintenance"
+}
+
+### 7) Revocación masiva por local
+POST {{baseUrl}}/api/auth/revoke/local
+Content-Type: application/json
+Authorization: Bearer {{adminBearer}}
+
+{
+  "mall_id": "{{mallId}}",
+  "local_id": "{{localId}}",
+  "reason": "incident-response"
+}
+
+### 8) Revocación masiva por mall
+POST {{baseUrl}}/api/auth/revoke/mall
+Content-Type: application/json
+Authorization: Bearer {{adminBearer}}
+
+{
+  "mall_id": "{{mallId}}",
+  "reason": "mall-wide-lockdown"
+}
+
+### 9) Listar tokens
+GET {{baseUrl}}/api/tokens?mall_id={{mallId}}&token_type=exporter
+Authorization: Bearer {{adminBearer}}
+
+### 10) Cambiar estado de token (activar/desactivar)
+PATCH {{baseUrl}}/api/tokens/REPLACE_TOKEN_ID/status
+Content-Type: application/json
+Authorization: Bearer {{adminBearer}}
+
+{
+  "status": "inactive"
+}
+
+### 11) Regenerar token (y opcionalmente client secret)
+POST {{baseUrl}}/api/tokens/REPLACE_TOKEN_ID/regenerate
+Content-Type: application/json
+Authorization: Bearer {{adminBearer}}
+
+{
+  "rotate_client_secret": true
+}
