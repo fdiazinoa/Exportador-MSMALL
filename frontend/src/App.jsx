@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Save, Server, Database, UploadCloud, CheckCircle, AlertCircle } from 'lucide-react';
+import { Save, Server, Database, UploadCloud, CheckCircle } from 'lucide-react';
 import parser from 'cron-parser';
+import TokenAdminPanel from './TokenAdminPanel';
 
 const API_URL = import.meta.env.PROD ? '' : 'http://localhost:3000';
 
@@ -180,6 +181,8 @@ function App() {
         )}
 
         <div className="p-6 space-y-8">
+          <TokenAdminPanel apiUrl={API_URL} />
+
           {/* Database Section */}
           <section>
             <h2 className="text-xl font-bold flex items-center gap-2 mb-4 text-gray-700 border-b pb-2">
