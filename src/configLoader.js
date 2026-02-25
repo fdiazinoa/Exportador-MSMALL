@@ -4,12 +4,17 @@ const logger = require('./logger');
 
 class ConfigLoader {
     constructor() {
-        this.configPath = path.join(process.cwd(), 'config', 'default.json');
+        this.configPath = this.resolveConfigPath();
         this.config = {};
+    }
+
+    resolveConfigPath() {
+        return process.env.MSMALL_CONFIG_PATH || path.join(process.cwd(), 'config', 'default.json');
     }
 
     load() {
         try {
+            this.configPath = this.resolveConfigPath();
             if (fs.existsSync(this.configPath)) {
                 const rawData = fs.readFileSync(this.configPath);
                 this.config = JSON.parse(rawData);

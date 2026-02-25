@@ -17,8 +17,9 @@
     "outputPath": "dist"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "pkg ."
+    "test": "node --test test/**/*.test.js",
+    "build": "pkg .",
+    "auth:migrate": "node scripts/auth-migrate.js"
   },
   "keywords": [],
   "author": "",
