@@ -5,15 +5,48 @@ const path = require('path');
 const configLoader = require('./configLoader');
 const dbFactory = require('./dbFactory');
 const ftpUploader = require('./ftpUploader'); // We might need to adjust ftpUploader to support a test method
+const webServiceUploader = require('./webServiceUploader');
 const logger = require('./logger');
 
 const router = express.Router();
+
+function sanitizeConfigForClient(config) {
+    if (!config || typeof config !== 'object') return config;
+    const cloned = JSON.parse(JSON.stringify(config));
+    if (cloned.webServices && typeof cloned.webServices === 'object') {
+        for (const ws of Object.values(cloned.webServices)) {
+            if (ws && typeof ws === 'object' && ws.authState) {
+                const authState = { ...ws.authState };
+                if (authState.accessToken) authState.accessToken = '[REDACTED]';
+                if (authState.refreshToken) authState.refreshToken = '[REDACTED]';
+                ws.authState = authState;
+            }
+        }
+    }
+    return cloned;
+}
+
+function preserveRuntimeAuthState(incomingConfig, currentConfig) {
+    const nextConfig = JSON.parse(JSON.stringify(incomingConfig || {}));
+    const currentWebServices = currentConfig?.webServices || {};
+    const nextWebServices = nextConfig.webServices || {};
+
+    for (const [key, currentWs] of Object.entries(currentWebServices)) {
+        if (!nextWebServices[key]) continue;
+        if (currentWs?.authState) {
+            nextWebServices[key].authState = currentWs.authState;
+        }
+    }
+
+    nextConfig.webServices = nextWebServices;
+    return nextConfig;
+}
 
 // Get Config
 router.get('/config', (req, res) => {
     try {
         const config = configLoader.load();
-        res.json(config);
+        res.json(sanitizeConfigForClient(config));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -22,7 +55,8 @@ router.get('/config', (req, res) => {
 // Save Config
 router.post('/config', (req, res) => {
     try {
-        const newConfig = req.body;
+        const currentConfig = configLoader.load();
+        const newConfig = preserveRuntimeAuthState(req.body, currentConfig);
         // Basic validation could go here
 
         // Write to file
@@ -93,6 +127,25 @@ router.post('/test/ftp', async (req, res) => {
         }
         res.json({ message: 'Connection successful' });
     } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Test Webservice Connection (MsMall token auth + optional sync probe)
+router.post('/test/webservice', async (req, res) => {
+    const { serverName } = req.body;
+    const config = configLoader.load();
+    const wsConfig = config.webServices?.[serverName];
+
+    if (!wsConfig) {
+        return res.status(404).json({ error: 'Webservice config not found' });
+    }
+
+    try {
+        const result = await webServiceUploader.testConnection(serverName);
+        res.json({ message: 'Connection successful', ...result });
+    } catch (error) {
+        logger.error(`Error testing webservice '${serverName}': ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Save, Server, Database, UploadCloud, CheckCircle, AlertCircle } from 'lucide-react';
+import { Save, Server, Database, UploadCloud, CheckCircle, Globe } from 'lucide-react';
 import parser from 'cron-parser';
 
 const API_URL = import.meta.env.PROD ? '' : 'http://localhost:3000';
@@ -63,6 +63,15 @@ function App() {
     }
   };
 
+  const testWebServiceConnection = async (serverKey) => {
+    try {
+      const res = await axios.post(`${API_URL}/api/test/webservice`, { serverName: serverKey });
+      alert(`Connection Successful! ${res.data.message}`);
+    } catch (err) {
+      alert(`Connection Failed: ${err.response?.data?.error || err.message}`);
+    }
+  };
+
   const updateDbConfig = (key, field, value) => {
     setConfig(prev => ({
       ...prev,
@@ -92,6 +101,7 @@ function App() {
       query: 'SELECT * FROM Table',
       mapping: {},
       format: 'csv',
+      destinationType: 'local',
       destination: '',
       schedule: '0 * * * *'
     };
@@ -153,6 +163,27 @@ function App() {
         }
       }
     }));
+  };
+
+  const updateWebServiceConfig = (key, field, value) => {
+    setConfig(prev => ({
+      ...prev,
+      webServices: {
+        ...(prev.webServices || {}),
+        [key]: {
+          ...(prev.webServices?.[key] || {}),
+          [field]: value
+        }
+      }
+    }));
+  };
+
+  const getJobDestinationType = (job) => {
+    if (!job) return 'local';
+    if (job.destinationType) return job.destinationType;
+    if (job.destination && config?.ftpServers?.[job.destination]) return 'ftp';
+    if (job.destination && config?.webServices?.[job.destination]) return 'webservice';
+    return 'local';
   };
 
   if (loading) return <div className="p-10">Loading...</div>;
@@ -334,6 +365,123 @@ function App() {
           {/* Jobs Section */}
           <section>
             <h2 className="text-xl font-bold flex items-center gap-2 mb-4 text-gray-700 border-b pb-2">
+              <Globe className="w-5 h-5" /> Web Services (MsMall)
+            </h2>
+            <div className="grid gap-6">
+              {Object.entries(config.webServices || {}).map(([key, ws]) => (
+                <div key={key} className="border rounded-lg p-4 bg-gray-50">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold text-lg text-blue-800">{key}</h3>
+                    <button
+                      onClick={() => testWebServiceConnection(key)}
+                      className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
+                    >
+                      Test Connection
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <label className="block">
+                      <span className="text-sm font-medium">Base URL</span>
+                      <input
+                        type="text"
+                        value={ws.baseUrl || ''}
+                        onChange={e => updateWebServiceConfig(key, 'baseUrl', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                        placeholder="https://msmall-api.example.com"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium">Mode</span>
+                      <select
+                        value={ws.mode || 'sync_rows'}
+                        onChange={e => updateWebServiceConfig(key, 'mode', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                      >
+                        <option value="sync_rows">sync_rows (recommended)</option>
+                        <option value="manual_execute">manual_execute</option>
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium">Client ID</span>
+                      <input
+                        type="text"
+                        value={ws.clientId || ''}
+                        onChange={e => updateWebServiceConfig(key, 'clientId', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium">Client Secret</span>
+                      <input
+                        type="password"
+                        value={ws.clientSecret || ''}
+                        onChange={e => updateWebServiceConfig(key, 'clientSecret', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium">Mall ID</span>
+                      <input
+                        type="text"
+                        value={ws.mallId || ''}
+                        onChange={e => updateWebServiceConfig(key, 'mallId', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium">Local ID</span>
+                      <input
+                        type="text"
+                        value={ws.localId || ''}
+                        onChange={e => updateWebServiceConfig(key, 'localId', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium">Config ID (manual execute)</span>
+                      <input
+                        type="text"
+                        value={ws.configId || ''}
+                        onChange={e => updateWebServiceConfig(key, 'configId', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium">Sync Path</span>
+                      <input
+                        type="text"
+                        value={ws.syncPath || '/api/v1/exporter/sync/ingest'}
+                        onChange={e => updateWebServiceConfig(key, 'syncPath', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium">Manual Execute Path</span>
+                      <input
+                        type="text"
+                        value={ws.manualExecutePath || '/api/v1/remote/execute-manual/exporter'}
+                        onChange={e => updateWebServiceConfig(key, 'manualExecutePath', e.target.value)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-medium">Timeout (ms)</span>
+                      <input
+                        type="number"
+                        value={ws.timeoutMs || 30000}
+                        onChange={e => updateWebServiceConfig(key, 'timeoutMs', parseInt(e.target.value, 10) || 30000)}
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Jobs Section */}
+          <section>
+            <h2 className="text-xl font-bold flex items-center gap-2 mb-4 text-gray-700 border-b pb-2">
               <CheckCircle className="w-5 h-5" /> Export Jobs
             </h2>
             <div className="space-y-6">
@@ -436,16 +584,70 @@ function App() {
                       </select>
                     </label>
                     <label className="block">
-                      <span className="text-sm font-medium">Destination FTP</span>
+                      <span className="text-sm font-medium">Destination Type</span>
                       <select
-                        value={job.destination}
-                        onChange={e => updateJob(index, 'destination', e.target.value)}
+                        value={getJobDestinationType(job)}
+                        onChange={e => {
+                          const nextType = e.target.value;
+                          updateJob(index, 'destinationType', nextType);
+                          if (nextType === 'ftp' || nextType === 'webservice') {
+                            updateJob(index, 'destination', '');
+                          }
+                        }}
                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
                       >
-                        <option value="">(None - Local Only)</option>
-                        {Object.keys(config.ftpServers || {}).map(ftp => <option key={ftp} value={ftp}>{ftp}</option>)}
+                        <option value="local">Local Folder</option>
+                        <option value="ftp">FTP / SFTP</option>
+                        <option value="webservice">Webservice (MsMall)</option>
                       </select>
                     </label>
+                    {getJobDestinationType(job) === 'ftp' && (
+                      <label className="block">
+                        <span className="text-sm font-medium">Destination FTP/SFTP</span>
+                        <select
+                          value={config.ftpServers?.[job.destination] ? job.destination : ''}
+                          onChange={e => {
+                            updateJob(index, 'destinationType', 'ftp');
+                            updateJob(index, 'destination', e.target.value);
+                          }}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                        >
+                          <option value="">(Select FTP/SFTP server)</option>
+                          {Object.keys(config.ftpServers || {}).map(ftp => <option key={ftp} value={ftp}>{ftp}</option>)}
+                        </select>
+                      </label>
+                    )}
+                    {getJobDestinationType(job) === 'webservice' && (
+                      <label className="block">
+                        <span className="text-sm font-medium">Destination Webservice</span>
+                        <select
+                          value={config.webServices?.[job.destination] ? job.destination : ''}
+                          onChange={e => {
+                            updateJob(index, 'destinationType', 'webservice');
+                            updateJob(index, 'destination', e.target.value);
+                          }}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                        >
+                          <option value="">(Select MsMall webservice)</option>
+                          {Object.keys(config.webServices || {}).map(ws => <option key={ws} value={ws}>{ws}</option>)}
+                        </select>
+                      </label>
+                    )}
+                    {getJobDestinationType(job) === 'local' && (
+                      <label className="block">
+                        <span className="text-sm font-medium">Destination (Local)</span>
+                        <input
+                          type="text"
+                          value={job.destination || ''}
+                          onChange={e => {
+                            updateJob(index, 'destinationType', 'local');
+                            updateJob(index, 'destination', e.target.value);
+                          }}
+                          placeholder="Leave empty to use default exports folder"
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                        />
+                      </label>
+                    )}
                     <label className="block md:col-span-2">
                       <span className="text-sm font-medium">Schedule</span>
                       <div className="flex flex-col gap-2 mt-1">
@@ -502,21 +704,13 @@ function App() {
                       </div>
                     </label>
 
-                    {/* Local Output Path if no FTP selected (or if destination is not a known FTP server) */}
-                    {(!job.destination || !config.ftpServers?.[job.destination]) && (
-                      <label className="block md:col-span-2">
-                        <span className="text-sm font-medium">Local Output Path (Optional)</span>
-                        <input
-                          type="text"
-                          value={config.ftpServers?.[job.destination] ? '' : (job.destination || '')}
-                          onChange={e => updateJob(index, 'destination', e.target.value)}
-                          placeholder="e.g., C:/Exports or /tmp/data"
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                        />
+                    {/* Extra local output path hint for local destinations only */}
+                    {getJobDestinationType(job) === 'local' && (
+                      <div className="block md:col-span-2 text-xs text-gray-500 -mt-2">
                         <div className="text-xs text-gray-500 mt-1">
                           Leave empty to use default 'exports' folder. Enter a full path to save elsewhere.
                         </div>
-                      </label>
+                      </div>
                     )}
 
                     <div className="md:col-span-2 flex justify-end mt-2">
