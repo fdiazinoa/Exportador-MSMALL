@@ -89,9 +89,11 @@ function App() {
   };
 
   const updateJob = (index, field, value) => {
-    const newJobs = [...(config.jobs || [])];
-    newJobs[index] = { ...newJobs[index], [field]: value };
-    setConfig(prev => ({ ...prev, jobs: newJobs }));
+    setConfig(prev => {
+      const newJobs = [...(prev.jobs || [])];
+      newJobs[index] = { ...newJobs[index], [field]: value };
+      return { ...prev, jobs: newJobs };
+    });
   };
 
   const addJob = () => {
