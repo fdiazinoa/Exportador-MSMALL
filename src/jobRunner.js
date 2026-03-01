@@ -3,6 +3,8 @@ const dataExtractor = require('./dataExtractor');
 const dataMapper = require('./dataMapper');
 const fileExporter = require('./fileExporter');
 const ftpUploader = require('./ftpUploader');
+const webServiceUploader = require('./webServiceUploader');
+const { resolveDestinationTarget } = require('./destinationResolver');
 const logger = require('./logger');
 const fs = require('fs');
 const pushTicketsFacturasHiOffice = require('./PushTicketsFacturasHiOffice');
@@ -40,22 +42,28 @@ async function runJob(jobName) {
         // 2. Map
         const mappedData = dataMapper.map(data, job.mapping || job.mappingFile);
 
-        // 3. Export
-        // Check if destination is a configured FTP server or a local path
+        // 3. Resolve destination (backward compatible: infer by configured FTP/webservice names)
+        const destinationTarget = resolveDestinationTarget(config, job.destinationType, job.destination);
+
+        // 4. Export (always export file locally or custom path first)
         let exportPath = null;
-        if (job.destination && (!config.ftpServers || !config.ftpServers[job.destination])) {
-            // It's likely a local path
-            exportPath = job.destination;
+        if (destinationTarget.type === 'local') {
+            exportPath = destinationTarget.path || null;
         }
 
         const filePath = await fileExporter.export(mappedData, job.format, job.name, exportPath);
 
-        // 4. Upload
-        if (job.destination && config.ftpServers && config.ftpServers[job.destination]) {
-            await ftpUploader.upload(filePath, job.destination);
+        // 5. Secondary delivery (FTP/SFTP/Webservice)
+        if (destinationTarget.type === 'ftp' && destinationTarget.key) {
+            await ftpUploader.upload(filePath, destinationTarget.key);
+        } else if (destinationTarget.type === 'webservice' && destinationTarget.key) {
+            await webServiceUploader.upload(filePath, destinationTarget.key, {
+                job,
+                mappedData,
+            });
         }
 
-        // 5. Update Last Run
+        // 6. Update Last Run
         job.lastRun = new Date().toISOString();
 
         // Persist config update
@@ -67,7 +75,11 @@ async function runJob(jobName) {
         }
 
         logger.info(`Job ${jobName} completed successfully.`);
-        return { success: true, message: `Job '${jobName}' executed successfully.` };
+        return {
+            success: true,
+            message: `Job '${jobName}' executed successfully.`,
+            destination: destinationTarget.type,
+        };
 
     } catch (error) {
         logger.error(`Job ${jobName} failed: ${error.message}`);
