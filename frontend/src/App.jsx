@@ -153,12 +153,20 @@ function looksLikeServiceAccountId(value) {
   return /^msa_[a-z0-9]+$/i.test(String(value || '').trim())
 }
 
+function getResolvedWebServiceIdentity(webService) {
+  const authState = webService?.authState || {}
+  return {
+    mallId: String(authState.mallId || webService?.mallId || '').trim(),
+    localId: String(authState.localId || webService?.localId || '').trim(),
+    tokenType: String(authState.tokenType || '').trim(),
+  }
+}
+
 function getWebServiceValidationErrors(webService) {
   if (!webService) return []
 
   const errors = []
-  const mallId = String(webService.mallId || '').trim()
-  const localId = String(webService.localId || '').trim()
+  const { mallId, localId } = getResolvedWebServiceIdentity(webService)
   const configId = String(webService.configId || '').trim()
   const mode = String(webService.mode || 'sync_rows').toLowerCase()
 
@@ -308,18 +316,6 @@ function App() {
 
     if (!config || !testConfig) return
 
-    if (scope === 'webservice') {
-      const validationErrors = getWebServiceValidationErrors(config.webServices?.[name])
-      if (validationErrors.length > 0) {
-        setConnectionStatus(scope, name, {
-          loading: false,
-          type: 'error',
-          message: validationErrors[0],
-        })
-        return
-      }
-    }
-
     setConnectionStatus(scope, name, { loading: true, type: null, message: '' })
 
     try {
@@ -328,6 +324,30 @@ function App() {
         `${API_URL}${testConfig.endpoint}`,
         testConfig.buildPayload(name),
       )
+
+      if (scope === 'webservice' && response.data?.token?.resolvedIdentity) {
+        const { mallId, localId } = response.data.token.resolvedIdentity
+        setConfig((current) => {
+          if (!current?.webServices?.[name]) return current
+          const existing = current.webServices[name]
+          return {
+            ...current,
+            webServices: {
+              ...current.webServices,
+              [name]: {
+                ...existing,
+                ...(mallId ? { mallId } : {}),
+                ...(localId ? { localId } : {}),
+                authState: {
+                  ...(existing.authState || {}),
+                  ...(mallId ? { mallId } : {}),
+                  ...(localId ? { localId } : {}),
+                },
+              },
+            },
+          }
+        })
+      }
 
       setConnectionStatus(scope, name, {
         loading: false,
@@ -847,15 +867,19 @@ function App() {
                 const referencedJobs = getReferencedJobs(config, 'webservice', webService.name)
                 const mode = String(webService.mode || 'sync_rows').toLowerCase()
                 const validationErrors = getWebServiceValidationErrors(webService)
+                const resolvedIdentity = getResolvedWebServiceIdentity(webService)
                 const mallIdInvalid =
-                  Boolean(String(webService.mallId || '').trim()) && !isUuid(webService.mallId)
-                const localIdLooksWrong = looksLikeServiceAccountId(webService.localId)
+                  Boolean(resolvedIdentity.mallId) && !isUuid(resolvedIdentity.mallId)
+                const localIdLooksWrong = looksLikeServiceAccountId(resolvedIdentity.localId)
                 const localIdInvalid =
-                  Boolean(String(webService.localId || '').trim()) &&
-                  (!isUuid(webService.localId) || localIdLooksWrong)
+                  Boolean(resolvedIdentity.localId) &&
+                  (!isUuid(resolvedIdentity.localId) || localIdLooksWrong)
                 const configIdInvalid =
                   mode === 'manual_execute' &&
                   (!String(webService.configId || '').trim() || !isUuid(webService.configId))
+                const hasDerivedIdentity = Boolean(
+                  webService.authState?.mallId || webService.authState?.localId,
+                )
 
                 return (
                   <ConnectionCard
@@ -884,8 +908,8 @@ function App() {
                           con `msa_`.
                         </li>
                         <li>
-                          `Local ID`: es el UUID del local en MsMall. No uses codigos como `L001`
-                          ni valores `msa_*`.
+                          `Mall ID` y `Local ID`: se autocompletan desde el token exporter despues
+                          de `Test Connection`.
                         </li>
                         <li>
                           `Config ID`: solo se usa en `manual_execute`. En `sync_rows` puede quedar
@@ -896,7 +920,7 @@ function App() {
 
                     {validationErrors.length > 0 ? (
                       <div className="col-span-12 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                        <p className="font-medium text-red-800">Hay campos de MsMall mal cargados</p>
+                        <p className="font-medium text-red-800">Hay campos de MsMall pendientes o mal cargados</p>
                         <ul className="mt-2 space-y-1">
                           {validationErrors.map((error) => (
                             <li key={error}>- {error}</li>
@@ -963,32 +987,44 @@ function App() {
                     <FormField
                       label="Mall ID"
                       className="col-span-12 md:col-span-4"
-                      hint="UUID del mall en MsMall. No es el nombre comercial."
+                      hint={
+                        hasDerivedIdentity
+                          ? 'Autocompletado desde el token exporter de MsMall. Solo lectura.'
+                          : 'Se completa automaticamente al hacer Test Connection.'
+                      }
                     >
                       <input
                         type="text"
-                        value={webService.mallId ?? ''}
-                        onChange={(event) =>
-                          updateWebServiceConfig(webService.name, 'mallId', event.target.value)
-                        }
-                        className={cn(inputBaseClassName, mallIdInvalid && invalidInputClassName)}
-                        placeholder="UUID del mall"
+                        value={resolvedIdentity.mallId}
+                        readOnly
+                        className={cn(
+                          inputBaseClassName,
+                          mallIdInvalid && invalidInputClassName,
+                          disabledInputClassName,
+                        )}
+                        placeholder="Se completa con Test Connection"
                       />
                     </FormField>
 
                     <FormField
                       label="Local ID"
                       className="col-span-12 md:col-span-4"
-                      hint="UUID del local en MsMall (locales.id). No uses L001, Zara ni valores msa_*."
+                      hint={
+                        hasDerivedIdentity
+                          ? 'Autocompletado desde el token exporter. No uses codigos de tienda ni Client ID.'
+                          : 'Se completa automaticamente con el UUID del local despues de Test Connection.'
+                      }
                     >
                       <input
                         type="text"
-                        value={webService.localId ?? ''}
-                        onChange={(event) =>
-                          updateWebServiceConfig(webService.name, 'localId', event.target.value)
-                        }
-                        className={cn(inputBaseClassName, localIdInvalid && invalidInputClassName)}
-                        placeholder="UUID del local"
+                        value={resolvedIdentity.localId}
+                        readOnly
+                        className={cn(
+                          inputBaseClassName,
+                          localIdInvalid && invalidInputClassName,
+                          disabledInputClassName,
+                        )}
+                        placeholder="Se completa con Test Connection"
                       />
                     </FormField>
 
