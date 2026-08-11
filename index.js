@@ -1,5 +1,5 @@
-// Polyfill for AbortSignal.any (Node 18 support)
-if (!AbortSignal.any) {
+// Polyfill only when AbortSignal exists. Legacy-2008 uses an older runtime.
+if (typeof AbortSignal !== 'undefined' && !AbortSignal.any) {
     AbortSignal.any = function (signals) {
         const controller = new AbortController();
         for (const signal of signals) {
@@ -14,7 +14,7 @@ if (!AbortSignal.any) {
 }
 
 const configLoader = require('./src/configLoader');
-const { runJob } = require('./src/jobRunner');
+const jobExecutor = require('./src/jobExecutor');
 const logger = require('./src/logger');
 
 const express = require('express');
@@ -22,6 +22,9 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const apiRouter = require('./src/api');
+const { resolveRuntimePath } = require('./src/runtimePaths');
+const packageInfo = require('./package.json');
+const buildInfo = require('./src/buildInfo');
 
 async function startServer() {
     const app = express();
@@ -34,7 +37,7 @@ async function startServer() {
     app.use('/api', apiRouter);
 
     // Serve Frontend
-    const frontendPath = path.join(__dirname, 'frontend/dist');
+    const frontendPath = resolveRuntimePath('frontend', 'dist');
     if (fs.existsSync(frontendPath)) {
         app.use(express.static(frontendPath));
         app.get(/.*/, (req, res) => {
@@ -52,7 +55,7 @@ async function startServer() {
 const cron = require('node-cron');
 
 async function main() {
-    logger.info('Exportador MSMall Service started.');
+    logger.info(`Exportador MSMall V${packageInfo.version} started. edition=${buildInfo.edition}`);
 
     // Start the Web Server
     startServer();
@@ -70,7 +73,7 @@ async function main() {
         logger.info('Running in CLI mode (Run Once).');
         if (config.jobs) {
             for (const job of config.jobs) {
-                await runJob(job.name);
+                await jobExecutor.execute(job.name);
             }
         }
         logger.info('All jobs finished. Exiting.');
@@ -83,7 +86,7 @@ async function main() {
             for (const job of config.jobs) {
                 if (job.schedule) {
                     logger.info(`Scheduling job '${job.name}' with cron: ${job.schedule}`);
-                    cron.schedule(job.schedule, () => {
+                    cron.schedule(job.schedule, async () => {
                         // Reload config to get latest updates (e.g. query changes)
                         // Note: If schedule changes, we'd need to restart the cron task. 
                         // For simplicity, we assume schedule changes require service restart or we could implement a dynamic re-scheduler.
@@ -91,7 +94,15 @@ async function main() {
                         const currentConfig = configLoader.load();
                         const currentJob = currentConfig.jobs.find(j => j.name === job.name);
                         if (currentJob) {
-                            runJob(currentJob.name);
+                            try {
+                                await jobExecutor.execute(currentJob.name);
+                            } catch (error) {
+                                if (error.code === 'JOB_ALREADY_RUNNING') {
+                                    logger.warn(`Skipping overlapping schedule for '${currentJob.name}'.`);
+                                } else {
+                                    logger.error(`Scheduled job '${currentJob.name}' failed: ${error.message}`);
+                                }
+                            }
                         }
                     });
                 } else {

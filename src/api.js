@@ -6,6 +6,9 @@ const configLoader = require('./configLoader');
 const dbFactory = require('./dbFactory');
 const ftpUploader = require('./ftpUploader'); // We might need to adjust ftpUploader to support a test method
 const logger = require('./logger');
+const jobExecutor = require('./jobExecutor');
+const packageInfo = require('../package.json');
+const buildInfo = require('./buildInfo');
 
 const router = express.Router();
 
@@ -17,6 +20,15 @@ router.get('/config', (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+});
+
+router.get('/health', (req, res) => {
+    res.json({
+        ok: true,
+        version: packageInfo.version,
+        edition: buildInfo.edition,
+        jobs: jobExecutor.status(),
+    });
 });
 
 // Save Config
@@ -143,11 +155,10 @@ router.post('/jobs/:name/run', async (req, res) => {
     const jobName = req.params.name;
 
     try {
-        const { runJob } = require('./jobRunner');
-        const result = await runJob(jobName);
+        const result = await jobExecutor.execute(jobName);
         res.json(result);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.code === 'JOB_ALREADY_RUNNING' ? 409 : 500).json({ error: error.message, code: error.code });
     }
 });
 

@@ -1,7 +1,8 @@
-const sql = require('mssql');
 const mysql = require('mysql2/promise');
 const { Client } = require('pg');
 const logger = require('./logger');
+const { normalizeSqlServerConfig } = require('./sqlServerConfig');
+const tediousClient = require('./tediousClient');
 
 class DbFactory {
     async getConnection(dbConfig) {
@@ -11,15 +12,17 @@ class DbFactory {
 
         try {
             switch (provider.toLowerCase()) {
-                case 'sqlserver':
-                    const pool = await sql.connect(config);
+                case 'sqlserver': {
+                    const normalized = normalizeSqlServerConfig(config);
+                    logger.info(`SQL Server profile=${normalized.metadata.profile} tds=${normalized.metadata.tdsVersion} security=${normalized.metadata.securityMode}`);
+                    // Each extraction owns a direct TDS connection. No process-global pool can
+                    // be closed by another concurrent job.
+                    const connection = await tediousClient.openConnection(normalized);
                     return {
-                        query: async (sqlQuery) => {
-                            const result = await pool.request().query(sqlQuery);
-                            return result.recordset;
-                        },
-                        close: async () => await pool.close()
+                        query: async sqlQuery => tediousClient.query(connection, sqlQuery),
+                        close: async () => tediousClient.close(connection)
                     };
+                }
 
                 case 'mysql':
                     const connection = await mysql.createConnection(config);
