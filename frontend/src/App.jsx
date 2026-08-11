@@ -10,7 +10,7 @@ const getNextRun = (schedule) => {
   try {
     const interval = parser.parseExpression(schedule);
     return interval.next().toString();
-  } catch (err) {
+  } catch {
     return 'Invalid Schedule';
   }
 };
@@ -73,6 +73,22 @@ function App() {
           config: {
             ...prev.databases[key].config,
             [field]: value
+          }
+        }
+      }
+    }));
+  };
+
+  const updateDbOption = (key, field, value) => {
+    setConfig(prev => ({
+      ...prev,
+      databases: {
+        ...prev.databases,
+        [key]: {
+          ...prev.databases[key],
+          config: {
+            ...prev.databases[key].config,
+            options: { ...(prev.databases[key].config.options || {}), [field]: value }
           }
         }
       }
@@ -211,6 +227,50 @@ function App() {
                             value={db.config.server}
                             onChange={e => updateDbConfig(key, 'server', e.target.value)}
                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-sm font-medium">Compatibilidad SQL Server</span>
+                          <select
+                            value={db.config.compatibilityProfile || 'modern'}
+                            onChange={e => updateDbConfig(key, 'compatibilityProfile', e.target.value)}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                          >
+                            <option value="sqlserver2008">SQL Server 2008 (TDS 7.3A)</option>
+                            <option value="sqlserver2008r2">SQL Server 2008 R2 (TDS 7.3B)</option>
+                            <option value="modern">SQL Server 2012 o superior (TDS 7.4)</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="text-sm font-medium">Seguridad de conexión</span>
+                          <select
+                            value={db.config.securityMode || 'modern'}
+                            onChange={e => updateDbConfig(key, 'securityMode', e.target.value)}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                          >
+                            <option value="modern">TLS moderno</option>
+                            <option value="legacy_tls1">TLS 1.0 heredado</option>
+                            <option value="unencrypted">Sin cifrado</option>
+                          </select>
+                        </label>
+                        <label className="block">
+                          <span className="text-sm font-medium">Timeout consulta (ms)</span>
+                          <input
+                            type="number"
+                            min="1000"
+                            value={db.config.requestTimeout || 60000}
+                            onChange={e => updateDbConfig(key, 'requestTimeout', Number(e.target.value))}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="text-sm font-medium">Timeout cancelación (ms)</span>
+                          <input
+                            type="number"
+                            min="1000"
+                            value={db.config.options?.cancelTimeout || 15000}
+                            onChange={e => updateDbOption(key, 'cancelTimeout', Number(e.target.value))}
+                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
                           />
                         </label>
                         <label className="block">

@@ -3,6 +3,9 @@
         "level": "info",
         "filename": "logs/app.log"
     },
+    "runtime": {
+        "maxConcurrentJobs": 2
+    },
     "databases": {
         "sqlserver_prod": {
             "provider": "sqlserver",
@@ -11,9 +14,14 @@
                 "password": "yourStrong(!)Password",
                 "server": "localhost",
                 "database": "TestDB",
+                "compatibilityProfile": "sqlserver2008",
+                "securityMode": "legacy_tls1",
+                "connectionTimeout": 30000,
+                "requestTimeout": 120000,
                 "options": {
                     "encrypt": true,
-                    "trustServerCertificate": true
+                    "trustServerCertificate": true,
+                    "cancelTimeout": 15000
                 }
             }
         },
