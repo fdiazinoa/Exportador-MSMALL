@@ -1,617 +1,470 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Save, Server, Database, UploadCloud, CheckCircle, AlertCircle } from 'lucide-react';
-import parser from 'cron-parser';
+import { useCallback, useEffect, useState } from 'react'
+import axios from 'axios'
+import {
+  Activity,
+  Database,
+  Download,
+  FileText,
+  ListChecks,
+  LoaderCircle,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  Server,
+  UploadCloud,
+} from 'lucide-react'
+import ConfigLayout from './components/config/ConfigLayout'
+import ConnectionCard from './components/config/ConnectionCard'
+import ConnectionSection from './components/config/ConnectionSection'
+import FormField, { checkboxBaseClassName, inputBaseClassName } from './components/config/FormField'
+import SecretField from './components/config/SecretField'
+import ToastMessage from './components/config/ToastMessage'
+import { cn } from './lib/cn'
 
-const API_URL = import.meta.env.PROD ? '' : 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3000')
+const emptyLogs = { entries: [], exists: false, fileName: '' }
 
-// Helper function to get next run
-const getNextRun = (schedule) => {
-  try {
-    const interval = parser.parseExpression(schedule);
-    return interval.next().toString();
-  } catch {
-    return 'Invalid Schedule';
-  }
-};
-
-function App() {
-  const [config, setConfig] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState(null);
-
-  useEffect(() => {
-    const fetchConfig = async () => {
-      try {
-        const res = await axios.get(`${API_URL}/api/config`);
-        setConfig(res.data);
-        setLoading(false);
-      } catch (err) {
-        console.error(err);
-        setMessage({ type: 'error', text: 'Error loading configuration' });
-        setLoading(false);
-      }
-    };
-    fetchConfig();
-  }, []);
-
-  const saveConfig = async () => {
-    try {
-      await axios.post(`${API_URL}/api/config`, config);
-      setMessage({ type: 'success', text: 'Configuration saved successfully!' });
-    } catch (err) {
-      console.error(err);
-      setMessage({ type: 'error', text: 'Error saving configuration' });
-    }
-  };
-
-  const testDbConnection = async (dbKey) => {
-    try {
-      const res = await axios.post(`${API_URL}/api/test/db`, { connectionName: dbKey });
-      alert(`Connection Successful! ${res.data.message}`);
-    } catch (err) {
-      alert(`Connection Failed: ${err.response?.data?.error || err.message}`);
-    }
-  };
-
-  const testFtpConnection = async (ftpKey) => {
-    try {
-      const res = await axios.post(`${API_URL}/api/test/ftp`, { serverName: ftpKey });
-      alert(`Connection Successful! ${res.data.message}`);
-    } catch (err) {
-      alert(`Connection Failed: ${err.response?.data?.error || err.message}`);
-    }
-  };
-
-  const updateDbConfig = (key, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      databases: {
-        ...prev.databases,
-        [key]: {
-          ...prev.databases[key],
-          config: {
-            ...prev.databases[key].config,
-            [field]: value
-          }
-        }
-      }
-    }));
-  };
-
-  const updateDbOption = (key, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      databases: {
-        ...prev.databases,
-        [key]: {
-          ...prev.databases[key],
-          config: {
-            ...prev.databases[key].config,
-            options: { ...(prev.databases[key].config.options || {}), [field]: value }
-          }
-        }
-      }
-    }));
-  };
-
-  const updateJob = (index, field, value) => {
-    const newJobs = [...(config.jobs || [])];
-    newJobs[index] = { ...newJobs[index], [field]: value };
-    setConfig(prev => ({ ...prev, jobs: newJobs }));
-  };
-
-  const addJob = () => {
-    const newJob = {
-      name: 'New Job',
-      sourceConnection: Object.keys(config.databases || {})[0] || '',
-      query: 'SELECT * FROM Table',
-      mapping: {},
-      format: 'csv',
-      destination: '',
-      schedule: '0 * * * *'
-    };
-    setConfig(prev => ({ ...prev, jobs: [...(prev.jobs || []), newJob] }));
-  };
-
-  const removeJob = (index) => {
-    const newJobs = [...(config.jobs || [])];
-    newJobs.splice(index, 1);
-    setConfig(prev => ({ ...prev, jobs: newJobs }));
-  };
-
-  const fetchColumns = async (index) => {
-    const job = config.jobs[index];
-    if (!job.sourceConnection || !job.query) {
-      alert('Please select a source connection and enter a query first.');
-      return;
-    }
-
-    try {
-      const res = await axios.post(`${API_URL}/api/schema`, {
-        connectionName: job.sourceConnection,
-        query: job.query
-      });
-
-      if (res.data.columns && res.data.columns.length > 0) {
-        // Initialize mapping if empty
-        const newMapping = { ...job.mapping };
-        res.data.columns.forEach(col => {
-          if (!newMapping[col]) {
-            newMapping[col] = col; // Default to same name
-          }
-        });
-        updateJob(index, 'mapping', newMapping);
-        alert('Columns fetched successfully!');
-      } else {
-        alert('No columns found. Check your query.');
-      }
-    } catch (err) {
-      console.error(err);
-      alert(`Error fetching columns: ${err.response?.data?.error || err.message}`);
-    }
-  };
-
-  const updateMapping = (jobIndex, sourceCol, targetCol) => {
-    const job = config.jobs[jobIndex];
-    const newMapping = { ...job.mapping, [sourceCol]: targetCol };
-    updateJob(jobIndex, 'mapping', newMapping);
-  };
-
-  const updateFtpConfig = (key, field, value) => {
-    setConfig(prev => ({
-      ...prev,
-      ftpServers: {
-        ...prev.ftpServers,
-        [key]: {
-          ...prev.ftpServers[key],
-          [field]: value
-        }
-      }
-    }));
-  };
-
-  if (loading) return <div className="p-10">Loading...</div>;
-
-  return (
-    <div className="min-h-screen bg-gray-50 p-8 font-sans text-gray-800">
-      <div className="max-w-4xl mx-auto bg-white shadow-lg rounded-xl overflow-hidden">
-        <header className="bg-blue-600 text-white p-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Server className="w-8 h-8" />
-            <h1 className="text-2xl font-bold">Exportador MSMall Config</h1>
-          </div>
-          <button
-            onClick={saveConfig}
-            className="flex items-center gap-2 bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-blue-50 transition"
-          >
-            <Save className="w-4 h-4" /> Save Changes
-          </button>
-        </header>
-
-        {message && (
-          <div className={`p-4 ${message.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-            {message.text}
-          </div>
-        )}
-
-        <div className="p-6 space-y-8">
-          {/* Database Section */}
-          <section>
-            <h2 className="text-xl font-bold flex items-center gap-2 mb-4 text-gray-700 border-b pb-2">
-              <Database className="w-5 h-5" /> Database Connections
-            </h2>
-            <div className="grid gap-6">
-              {Object.entries(config.databases || {}).map(([key, db]) => (
-                <div key={key} className="border rounded-lg p-4 bg-gray-50">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold text-lg text-blue-800">{key}</h3>
-                    <div className="flex gap-2">
-                      <span className="px-2 py-1 bg-gray-200 rounded text-xs uppercase font-bold">{db.provider}</span>
-                      <button
-                        onClick={() => testDbConnection(key)}
-                        className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
-                      >
-                        Test Connection
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    {db.provider === 'sqlserver' && (
-                      <>
-                        <label className="block">
-                          <span className="text-sm font-medium">Server</span>
-                          <input
-                            type="text"
-                            value={db.config.server}
-                            onChange={e => updateDbConfig(key, 'server', e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="text-sm font-medium">Compatibilidad SQL Server</span>
-                          <select
-                            value={db.config.compatibilityProfile || 'modern'}
-                            onChange={e => updateDbConfig(key, 'compatibilityProfile', e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                          >
-                            <option value="sqlserver2008">SQL Server 2008 (TDS 7.3A)</option>
-                            <option value="sqlserver2008r2">SQL Server 2008 R2 (TDS 7.3B)</option>
-                            <option value="modern">SQL Server 2012 o superior (TDS 7.4)</option>
-                          </select>
-                        </label>
-                        <label className="block">
-                          <span className="text-sm font-medium">Seguridad de conexión</span>
-                          <select
-                            value={db.config.securityMode || 'modern'}
-                            onChange={e => updateDbConfig(key, 'securityMode', e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                          >
-                            <option value="modern">TLS moderno</option>
-                            <option value="legacy_tls1">TLS 1.0 heredado</option>
-                            <option value="unencrypted">Sin cifrado</option>
-                          </select>
-                        </label>
-                        <label className="block">
-                          <span className="text-sm font-medium">Timeout consulta (ms)</span>
-                          <input
-                            type="number"
-                            min="1000"
-                            value={db.config.requestTimeout || 60000}
-                            onChange={e => updateDbConfig(key, 'requestTimeout', Number(e.target.value))}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="text-sm font-medium">Timeout cancelación (ms)</span>
-                          <input
-                            type="number"
-                            min="1000"
-                            value={db.config.options?.cancelTimeout || 15000}
-                            onChange={e => updateDbOption(key, 'cancelTimeout', Number(e.target.value))}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="text-sm font-medium">Database</span>
-                          <input
-                            type="text"
-                            value={db.config.database}
-                            onChange={e => updateDbConfig(key, 'database', e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="text-sm font-medium">User</span>
-                          <input
-                            type="text"
-                            value={db.config.user}
-                            onChange={e => updateDbConfig(key, 'user', e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="text-sm font-medium">Password</span>
-                          <input
-                            type="password"
-                            value={db.config.password}
-                            onChange={e => updateDbConfig(key, 'password', e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                          />
-                        </label>
-                      </>
-                    )}
-                    {/* Add other providers here if needed */}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* FTP Section */}
-          <section>
-            <h2 className="text-xl font-bold flex items-center gap-2 mb-4 text-gray-700 border-b pb-2">
-              <UploadCloud className="w-5 h-5" /> FTP Servers
-            </h2>
-            <div className="grid gap-6">
-              {Object.entries(config.ftpServers || {}).map(([key, ftp]) => (
-                <div key={key} className="border rounded-lg p-4 bg-gray-50">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-semibold text-lg text-blue-800">{key}</h3>
-                    <button
-                      onClick={() => testFtpConnection(key)}
-                      className="text-xs bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700"
-                    >
-                      Test Connection
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <label className="block">
-                      <span className="text-sm font-medium">Protocol</span>
-                      <select
-                        value={ftp.protocol || 'ftp'}
-                        onChange={e => updateFtpConfig(key, 'protocol', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                      >
-                        <option value="ftp">FTP</option>
-                        <option value="ftps">FTPS</option>
-                        <option value="sftp">SFTP</option>
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-medium">Host</span>
-                      <input
-                        type="text"
-                        value={ftp.host}
-                        onChange={e => updateFtpConfig(key, 'host', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-medium">Port</span>
-                      <input
-                        type="number"
-                        value={ftp.port || (ftp.protocol === 'sftp' ? 22 : 21)}
-                        onChange={e => updateFtpConfig(key, 'port', parseInt(e.target.value))}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-medium">User</span>
-                      <input
-                        type="text"
-                        value={ftp.user}
-                        onChange={e => updateFtpConfig(key, 'user', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-medium">Password</span>
-                      <input
-                        type="password"
-                        value={ftp.password}
-                        onChange={e => updateFtpConfig(key, 'password', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-                      />
-                    </label>
-                    <label className="flex items-center mt-6">
-                      <input
-                        type="checkbox"
-                        checked={ftp.secure || false}
-                        onChange={e => updateFtpConfig(key, 'secure', e.target.checked)}
-                        disabled={ftp.protocol === 'sftp'}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                      <span className="ml-2 text-sm text-gray-900">Secure (FTPS)</span>
-                    </label>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Jobs Section */}
-          <section>
-            <h2 className="text-xl font-bold flex items-center gap-2 mb-4 text-gray-700 border-b pb-2">
-              <CheckCircle className="w-5 h-5" /> Export Jobs
-            </h2>
-            <div className="space-y-6">
-              {config.jobs?.map((job, index) => (
-                <div key={index} className="border rounded-lg p-4 bg-gray-50">
-                  <div className="flex justify-between items-center mb-4">
-                    <div>
-                      <h3 className="font-semibold text-lg text-blue-800">{job.name}</h3>
-                      <div className="text-xs text-gray-500 flex gap-4 mt-1">
-                        <span>
-                          <strong>Last Run:</strong> {job.lastRun ? new Date(job.lastRun).toLocaleString() : 'Never'}
-                        </span>
-                        <span>
-                          <strong>Next Run:</strong> {getNextRun(job.schedule || '* * * * *')}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeJob(index)}
-                      className="text-red-500 text-sm hover:underline"
-                    >
-                      Remove
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <label className="block">
-                      <span className="text-sm font-medium">Job Name</span>
-                      <input
-                        type="text"
-                        value={job.name}
-                        onChange={e => updateJob(index, 'name', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-medium">Source DB</span>
-                      <select
-                        value={job.sourceConnection}
-                        onChange={e => updateJob(index, 'sourceConnection', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                      >
-                        {Object.keys(config.databases || {}).map(db => <option key={db} value={db}>{db}</option>)}
-                      </select>
-                    </label>
-                    <label className="block md:col-span-2">
-                      <span className="text-sm font-medium">SQL Query</span>
-                      <textarea
-                        value={job.query}
-                        onChange={e => updateJob(index, 'query', e.target.value)}
-                        rows={3}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border font-mono text-sm"
-                      />
-                    </label>
-
-                    {/* Visual Mapper */}
-                    <div className="md:col-span-2 border p-3 rounded bg-white">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="font-medium text-sm">Field Mapping (Source &rarr; Target)</span>
-                        <button
-                          onClick={() => fetchColumns(index)}
-                          className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200"
-                        >
-                          Fetch Columns
-                        </button>
-                      </div>
-
-                      {job.mapping && Object.keys(job.mapping).length > 0 ? (
-                        <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto">
-                          {Object.entries(job.mapping).map(([source, target]) => (
-                            <div key={source} className="flex items-center gap-2 text-sm">
-                              <span className="w-1/2 truncate font-mono text-gray-600" title={source}>{source}</span>
-                              <span className="text-gray-400">&rarr;</span>
-                              <input
-                                type="text"
-                                value={target}
-                                onChange={e => updateMapping(index, source, e.target.value)}
-                                className="w-1/2 border rounded px-1 py-0.5"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-xs text-gray-500 italic">
-                          Click "Fetch Columns" to load fields from the query.
-                        </div>
-                      )}
-                    </div>
-
-                    <label className="block">
-                      <span className="text-sm font-medium">Export Format</span>
-                      <select
-                        value={job.format}
-                        onChange={e => updateJob(index, 'format', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                      >
-                        <option value="csv">CSV</option>
-                        <option value="json">JSON</option>
-                        <option value="txt">TXT</option>
-                      </select>
-                    </label>
-                    <label className="block">
-                      <span className="text-sm font-medium">Destination FTP</span>
-                      <select
-                        value={job.destination}
-                        onChange={e => updateJob(index, 'destination', e.target.value)}
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                      >
-                        <option value="">(None - Local Only)</option>
-                        {Object.keys(config.ftpServers || {}).map(ftp => <option key={ftp} value={ftp}>{ftp}</option>)}
-                      </select>
-                    </label>
-                    <label className="block md:col-span-2">
-                      <span className="text-sm font-medium">Schedule</span>
-                      <div className="flex flex-col gap-2 mt-1">
-                        <div className="flex gap-2">
-                          <select
-                            value={job.scheduleType || 'custom'}
-                            onChange={e => {
-                              const type = e.target.value;
-                              let newSchedule = job.schedule;
-                              if (type === 'hourly') newSchedule = '0 * * * *';
-                              if (type === 'every2hours') newSchedule = '0 */2 * * *';
-                              if (type === 'every4hours') newSchedule = '0 */4 * * *';
-                              if (type === 'every6hours') newSchedule = '0 */6 * * *';
-                              if (type === 'every8hours') newSchedule = '0 */8 * * *';
-                              if (type === 'every12hours') newSchedule = '0 */12 * * *';
-                              if (type === 'daily') newSchedule = '0 0 * * *';
-                              if (type === 'weekly') newSchedule = '0 0 * * 0';
-
-                              const newJobs = [...(config.jobs || [])];
-                              newJobs[index] = { ...newJobs[index], scheduleType: type, schedule: newSchedule };
-                              setConfig(prev => ({ ...prev, jobs: newJobs }));
-                            }}
-                            className="block w-1/3 rounded-md border-gray-300 shadow-sm p-2 border"
-                          >
-                            <option value="custom">Custom (Cron)</option>
-                            <option value="hourly">Every Hour</option>
-                            <option value="every2hours">Every 2 Hours</option>
-                            <option value="every4hours">Every 4 Hours</option>
-                            <option value="every6hours">Every 6 Hours</option>
-                            <option value="every8hours">Every 8 Hours</option>
-                            <option value="every12hours">Every 12 Hours</option>
-                            <option value="daily">Daily (Midnight)</option>
-                            <option value="weekly">Weekly (Sunday)</option>
-                          </select>
-
-                          <input
-                            type="text"
-                            value={job.schedule || '* * * * *'}
-                            onChange={e => {
-                              const newJobs = [...(config.jobs || [])];
-                              newJobs[index] = { ...newJobs[index], schedule: e.target.value, scheduleType: 'custom' };
-                              setConfig(prev => ({ ...prev, jobs: newJobs }));
-                            }}
-                            placeholder="* * * * *"
-                            className="block w-2/3 rounded-md border-gray-300 shadow-sm p-2 border font-mono"
-                          />
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {job.scheduleType === 'hourly' && "Runs at minute 0 of every hour (1:00, 2:00, ...)."}
-                          {job.scheduleType === 'every2hours' && "Runs at minute 0 every 2 hours (0:00, 2:00, 4:00...)."}
-                          {job.scheduleType === 'daily' && "Runs every day at 00:00 (Midnight)."}
-                          {job.scheduleType === 'custom' && "Custom Cron Expression. Format: minute hour day month week"}
-                        </div>
-                      </div>
-                    </label>
-
-                    {/* Local Output Path if no FTP selected (or if destination is not a known FTP server) */}
-                    {(!job.destination || !config.ftpServers?.[job.destination]) && (
-                      <label className="block md:col-span-2">
-                        <span className="text-sm font-medium">Local Output Path (Optional)</span>
-                        <input
-                          type="text"
-                          value={config.ftpServers?.[job.destination] ? '' : (job.destination || '')}
-                          onChange={e => updateJob(index, 'destination', e.target.value)}
-                          placeholder="e.g., C:/Exports or /tmp/data"
-                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2 border"
-                        />
-                        <div className="text-xs text-gray-500 mt-1">
-                          Leave empty to use default 'exports' folder. Enter a full path to save elsewhere.
-                        </div>
-                      </label>
-                    )}
-
-                    <div className="md:col-span-2 flex justify-end mt-2">
-                      <button
-                        onClick={async () => {
-                          try {
-                            if (!job.name) return alert('Save the job first (or give it a name).');
-                            // We need to save config first to ensure backend has latest job definition
-                            await saveConfig();
-                            const res = await axios.post(`${API_URL}/api/jobs/${job.name}/run`);
-                            alert(res.data.message);
-                          } catch (err) {
-                            alert(`Execution Failed: ${err.response?.data?.error || err.message}`);
-                          }
-                        }}
-                        className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition"
-                      >
-                        <CheckCircle className="w-4 h-4" /> Run Now
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              <button
-                onClick={addJob}
-                className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-500 hover:text-blue-500 transition"
-              >
-                + Add New Job
-              </button>
-            </div>
-          </section>
-        </div >
-      </div >
-    </div >
-  );
+function errorMessage(error) {
+  return error.response?.data?.error || error.message || 'Error inesperado'
 }
 
-export default App;
+function App() {
+  const [config, setConfig] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState('configuration')
+  const [toast, setToast] = useState(null)
+  const [health, setHealth] = useState(null)
+  const [testing, setTesting] = useState({})
+  const [running, setRunning] = useState({})
+  const [logs, setLogs] = useState(emptyLogs)
+  const [logType, setLogType] = useState('combined')
+  const [logLevel, setLogLevel] = useState('all')
+  const [logSearch, setLogSearch] = useState('')
+  const [logsLoading, setLogsLoading] = useState(false)
+
+  const notify = useCallback((type, title, message = '') => {
+    setToast({ type, title, message })
+    window.setTimeout(() => setToast(null), 4500)
+  }, [])
+
+  useEffect(() => {
+    Promise.all([
+      axios.get(`${API_URL}/api/config`),
+      axios.get(`${API_URL}/api/health`).catch(() => ({ data: null })),
+    ])
+      .then(([configResponse, healthResponse]) => {
+        setConfig(configResponse.data)
+        setHealth(healthResponse.data)
+      })
+      .catch(error => notify('error', 'No se pudo cargar la configuración', errorMessage(error)))
+      .finally(() => setLoading(false))
+  }, [notify])
+
+  const fetchLogs = useCallback(async () => {
+    setLogsLoading(true)
+    try {
+      const response = await axios.get(`${API_URL}/api/logs/${logType}`, {
+        params: { lines: 500, level: logLevel, search: logSearch },
+      })
+      setLogs(response.data)
+    } catch (error) {
+      notify('error', 'No se pudieron cargar los logs', errorMessage(error))
+    } finally {
+      setLogsLoading(false)
+    }
+  }, [logLevel, logSearch, logType, notify])
+
+  useEffect(() => {
+    if (activeTab === 'logs') fetchLogs()
+  }, [activeTab, fetchLogs])
+
+  const saveConfig = async ({ silent = false } = {}) => {
+    setSaving(true)
+    try {
+      await axios.post(`${API_URL}/api/config`, config)
+      if (!silent) notify('success', 'Configuración guardada', 'Los cambios ya están disponibles para el Exportador.')
+      return true
+    } catch (error) {
+      notify('error', 'No se pudo guardar', errorMessage(error))
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const updateDatabase = (key, updater) => {
+    setConfig(current => ({
+      ...current,
+      databases: {
+        ...current.databases,
+        [key]: updater(current.databases[key]),
+      },
+    }))
+  }
+
+  const updateDbConfig = (key, field, value) => {
+    updateDatabase(key, database => ({
+      ...database,
+      config: { ...database.config, [field]: value },
+    }))
+  }
+
+  const updateDbOption = (key, field, value) => {
+    updateDatabase(key, database => ({
+      ...database,
+      config: {
+        ...database.config,
+        options: { ...(database.config.options || {}), [field]: value },
+      },
+    }))
+  }
+
+  const updateFtp = (key, field, value) => {
+    setConfig(current => ({
+      ...current,
+      ftpServers: {
+        ...current.ftpServers,
+        [key]: { ...current.ftpServers[key], [field]: value },
+      },
+    }))
+  }
+
+  const updateJob = (index, field, value) => {
+    setConfig(current => ({
+      ...current,
+      jobs: current.jobs.map((job, jobIndex) => jobIndex === index ? { ...job, [field]: value } : job),
+    }))
+  }
+
+  const testConnection = async (kind, key) => {
+    const statusKey = `${kind}:${key}`
+    setTesting(current => ({ ...current, [statusKey]: true }))
+    try {
+      const payload = kind === 'db' ? { connectionName: key } : { serverName: key }
+      const response = await axios.post(`${API_URL}/api/test/${kind}`, payload)
+      setTesting(current => ({ ...current, [statusKey]: false, [`${statusKey}:status`]: { type: 'success', message: response.data.message } }))
+    } catch (error) {
+      setTesting(current => ({ ...current, [statusKey]: false, [`${statusKey}:status`]: { type: 'error', message: errorMessage(error) } }))
+    }
+  }
+
+  const addJob = () => {
+    const sourceConnection = Object.keys(config.databases || {})[0] || ''
+    setConfig(current => ({
+      ...current,
+      jobs: [...(current.jobs || []), {
+        name: `Nuevo Job ${(current.jobs || []).length + 1}`,
+        sourceConnection,
+        query: 'SELECT * FROM Tabla',
+        mapping: {},
+        format: 'csv',
+        destination: '',
+        schedule: '0 * * * *',
+      }],
+    }))
+  }
+
+  const removeJob = index => {
+    setConfig(current => ({ ...current, jobs: current.jobs.filter((_, jobIndex) => jobIndex !== index) }))
+  }
+
+  const fetchColumns = async index => {
+    const job = config.jobs[index]
+    try {
+      const response = await axios.post(`${API_URL}/api/schema`, {
+        connectionName: job.sourceConnection,
+        query: job.query,
+      })
+      const mapping = { ...(job.mapping || {}) }
+      response.data.columns.forEach(column => { if (!mapping[column]) mapping[column] = column })
+      updateJob(index, 'mapping', mapping)
+      notify('success', 'Columnas cargadas', `${response.data.columns.length} columnas detectadas.`)
+    } catch (error) {
+      notify('error', 'No se pudieron obtener las columnas', errorMessage(error))
+    }
+  }
+
+  const runJob = async (job, index) => {
+    if (!job.name) return notify('error', 'El Job necesita un nombre')
+    setRunning(current => ({ ...current, [index]: true }))
+    try {
+      const saved = await saveConfig({ silent: true })
+      if (!saved) return
+      const response = await axios.post(`${API_URL}/api/jobs/${encodeURIComponent(job.name)}/run`)
+      notify('success', 'Job ejecutado', response.data.message || job.name)
+    } catch (error) {
+      notify('error', 'Falló la ejecución', errorMessage(error))
+    } finally {
+      setRunning(current => ({ ...current, [index]: false }))
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 text-gray-600">
+        <LoaderCircle className="mr-3 h-5 w-5 animate-spin" />
+        Cargando Exportador V16...
+      </div>
+    )
+  }
+
+  if (!config) {
+    return <div className="p-10 text-center text-red-700">No fue posible cargar la configuración.</div>
+  }
+
+  const databases = Object.entries(config.databases || {})
+  const ftpServers = Object.entries(config.ftpServers || {})
+  const jobs = config.jobs || []
+
+  return (
+    <ConfigLayout onSave={() => saveConfig()} saving={saving} saveDisabled={!config}>
+      <ToastMessage toast={toast} />
+
+      <div className="mb-8 flex flex-col gap-4 rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="rounded-xl bg-blue-50 p-2.5 text-blue-700"><Server className="h-5 w-5" /></div>
+          <div>
+            <p className="text-sm font-semibold text-gray-950">Exportador V{health?.version || '16.0'}</p>
+            <p className="text-xs text-gray-500">Edición {health?.edition || 'Standard'} · {health?.ok ? 'Servicio disponible' : 'Estado no disponible'}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700">
+          <span className={cn('h-2.5 w-2.5 rounded-full', health?.ok ? 'bg-emerald-500' : 'bg-gray-300')} />
+          {health?.ok ? 'Operativo' : 'Sin conexión'}
+        </div>
+      </div>
+
+      <div className="mb-8 inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setActiveTab('configuration')}
+          className={cn('inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition', activeTab === 'configuration' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50')}
+        >
+          <Activity className="h-4 w-4" /> Configuración
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('logs')}
+          className={cn('inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition', activeTab === 'logs' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50')}
+        >
+          <FileText className="h-4 w-4" /> Logs
+        </button>
+      </div>
+
+      {activeTab === 'configuration' ? (
+        <div className="space-y-10">
+          <ConnectionSection icon={Database} title="Conexiones de base de datos" description="Orígenes usados por los jobs de exportación." isEmpty={!databases.length} emptyMessage="No hay conexiones configuradas.">
+            {databases.map(([key, database]) => {
+              const db = database.config || {}
+              const statusKey = `db:${key}`
+              return (
+                <ConnectionCard
+                  key={key}
+                  name={key}
+                  typeLabel={database.provider}
+                  tone={database.provider === 'sqlserver' ? 'blue' : 'orange'}
+                  onTest={() => testConnection('db', key)}
+                  testing={testing[statusKey]}
+                  status={testing[`${statusKey}:status`]}
+                >
+                  {database.provider === 'sqlserver' ? (
+                    <>
+                      <FormField label="Servidor" className="md:col-span-6">
+                        <input className={inputBaseClassName} value={db.server || ''} onChange={event => updateDbConfig(key, 'server', event.target.value)} placeholder="SERVIDOR\\INSTANCIA o servidor,1433" />
+                      </FormField>
+                      <FormField label="Base de datos" className="md:col-span-6">
+                        <input className={inputBaseClassName} value={db.database || ''} onChange={event => updateDbConfig(key, 'database', event.target.value)} />
+                      </FormField>
+                      <FormField label="Perfil de compatibilidad" className="md:col-span-6" hint="Define la versión TDS usada por esta conexión.">
+                        <select className={inputBaseClassName} value={db.compatibilityProfile || 'modern'} onChange={event => updateDbConfig(key, 'compatibilityProfile', event.target.value)}>
+                          <option value="sqlserver2008">SQL Server 2008 · TDS 7.3A</option>
+                          <option value="sqlserver2008r2">SQL Server 2008 R2 · TDS 7.3B</option>
+                          <option value="modern">SQL Server 2012+ · TDS 7.4</option>
+                        </select>
+                      </FormField>
+                      <FormField label="Seguridad" className="md:col-span-6">
+                        <select className={inputBaseClassName} value={db.securityMode || 'modern'} onChange={event => updateDbConfig(key, 'securityMode', event.target.value)}>
+                          <option value="modern">TLS moderno</option>
+                          <option value="legacy_tls1">TLS 1.0 heredado</option>
+                          <option value="unencrypted">Sin cifrado</option>
+                        </select>
+                      </FormField>
+                      <FormField label="Usuario" className="md:col-span-6">
+                        <input className={inputBaseClassName} value={db.user || ''} onChange={event => updateDbConfig(key, 'user', event.target.value)} />
+                      </FormField>
+                      <SecretField label="Contraseña" className="md:col-span-6" value={db.password || ''} onChange={value => updateDbConfig(key, 'password', value)} />
+                      <FormField label="Timeout de conexión (ms)" className="md:col-span-4">
+                        <input type="number" min="1000" className={inputBaseClassName} value={db.connectionTimeout || 30000} onChange={event => updateDbConfig(key, 'connectionTimeout', Number(event.target.value))} />
+                      </FormField>
+                      <FormField label="Timeout de consulta (ms)" className="md:col-span-4">
+                        <input type="number" min="1000" className={inputBaseClassName} value={db.requestTimeout || 120000} onChange={event => updateDbConfig(key, 'requestTimeout', Number(event.target.value))} />
+                      </FormField>
+                      <FormField label="Timeout de cancelación (ms)" className="md:col-span-4">
+                        <input type="number" min="1000" className={inputBaseClassName} value={db.options?.cancelTimeout || 15000} onChange={event => updateDbOption(key, 'cancelTimeout', Number(event.target.value))} />
+                      </FormField>
+                    </>
+                  ) : (
+                    <>
+                      <FormField label="Host" className="md:col-span-6">
+                        <input className={inputBaseClassName} value={db.host || ''} onChange={event => updateDbConfig(key, 'host', event.target.value)} />
+                      </FormField>
+                      <FormField label="Base de datos" className="md:col-span-6">
+                        <input className={inputBaseClassName} value={db.database || ''} onChange={event => updateDbConfig(key, 'database', event.target.value)} />
+                      </FormField>
+                      <FormField label="Usuario" className="md:col-span-6">
+                        <input className={inputBaseClassName} value={db.user || ''} onChange={event => updateDbConfig(key, 'user', event.target.value)} />
+                      </FormField>
+                      <SecretField label="Contraseña" className="md:col-span-6" value={db.password || ''} onChange={value => updateDbConfig(key, 'password', value)} />
+                    </>
+                  )}
+                </ConnectionCard>
+              )
+            })}
+          </ConnectionSection>
+
+          <ConnectionSection icon={UploadCloud} title="Servidores FTP" description="Destinos FTP, FTPS y SFTP de las exportaciones." isEmpty={!ftpServers.length} emptyMessage="No hay servidores FTP configurados.">
+            {ftpServers.map(([key, ftp]) => {
+              const statusKey = `ftp:${key}`
+              return (
+                <ConnectionCard key={key} name={key} typeLabel={ftp.protocol || (ftp.secure ? 'ftps' : 'ftp')} tone="emerald" onTest={() => testConnection('ftp', key)} testing={testing[statusKey]} status={testing[`${statusKey}:status`]}>
+                  <FormField label="Protocolo" className="md:col-span-4">
+                    <select className={inputBaseClassName} value={ftp.protocol || 'ftp'} onChange={event => updateFtp(key, 'protocol', event.target.value)}>
+                      <option value="ftp">FTP</option><option value="ftps">FTPS</option><option value="sftp">SFTP</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Host" className="md:col-span-5">
+                    <input className={inputBaseClassName} value={ftp.host || ''} onChange={event => updateFtp(key, 'host', event.target.value)} />
+                  </FormField>
+                  <FormField label="Puerto" className="md:col-span-3">
+                    <input type="number" className={inputBaseClassName} value={ftp.port || (ftp.protocol === 'sftp' ? 22 : 21)} onChange={event => updateFtp(key, 'port', Number(event.target.value))} />
+                  </FormField>
+                  <FormField label="Usuario" className="md:col-span-6">
+                    <input className={inputBaseClassName} value={ftp.user || ''} onChange={event => updateFtp(key, 'user', event.target.value)} />
+                  </FormField>
+                  <SecretField label="Contraseña" className="md:col-span-6" value={ftp.password || ''} onChange={value => updateFtp(key, 'password', value)} />
+                  <label className="col-span-12 flex items-center gap-2 text-sm font-medium text-gray-700">
+                    <input type="checkbox" className={checkboxBaseClassName} checked={Boolean(ftp.secure)} onChange={event => updateFtp(key, 'secure', event.target.checked)} disabled={ftp.protocol === 'sftp'} />
+                    Usar conexión segura FTPS
+                  </label>
+                </ConnectionCard>
+              )
+            })}
+          </ConnectionSection>
+
+          <ConnectionSection
+            icon={ListChecks}
+            title="Jobs de exportación"
+            description="Consultas, destinos y programación de cada proceso."
+            isEmpty={!jobs.length}
+            emptyMessage="No hay jobs configurados."
+            actions={<button type="button" onClick={addJob} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Plus className="h-4 w-4" /> Nuevo Job</button>}
+          >
+            {jobs.map((job, index) => (
+              <ConnectionCard key={`${job.name}-${index}`} name={job.name || `Job ${index + 1}`} typeLabel={job.type || job.format || 'job'} tone="violet" onDelete={() => removeJob(index)} deleteTitle="Eliminar Job">
+                <FormField label="Nombre" className="md:col-span-6">
+                  <input className={inputBaseClassName} value={job.name || ''} onChange={event => updateJob(index, 'name', event.target.value)} />
+                </FormField>
+                <FormField label="Conexión de origen" className="md:col-span-6">
+                  <select className={inputBaseClassName} value={job.sourceConnection || ''} onChange={event => updateJob(index, 'sourceConnection', event.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    {databases.map(([name]) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </FormField>
+                <FormField label="Consulta SQL" className="md:col-span-12">
+                  <textarea rows="5" className={cn(inputBaseClassName, 'font-mono')} value={job.query || ''} onChange={event => updateJob(index, 'query', event.target.value)} />
+                </FormField>
+                <div className="col-span-12 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-gray-800">Mapeo de campos</p>
+                    <button type="button" onClick={() => fetchColumns(index)} className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50">Obtener columnas</button>
+                  </div>
+                  {Object.keys(job.mapping || {}).length ? (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {Object.entries(job.mapping).map(([source, target]) => (
+                        <label key={source} className="flex items-center gap-2 text-xs text-gray-600">
+                          <span className="w-2/5 truncate font-mono" title={source}>{source}</span>
+                          <span>→</span>
+                          <input className={cn(inputBaseClassName, 'py-1.5')} value={target} onChange={event => updateJob(index, 'mapping', { ...job.mapping, [source]: event.target.value })} />
+                        </label>
+                      ))}
+                    </div>
+                  ) : <p className="text-xs text-gray-500">Obtén las columnas para crear el mapeo visual.</p>}
+                </div>
+                <FormField label="Formato" className="md:col-span-4">
+                  <select className={inputBaseClassName} value={job.format || 'csv'} onChange={event => updateJob(index, 'format', event.target.value)}>
+                    <option value="csv">CSV</option><option value="json">JSON</option><option value="txt">TXT</option>
+                  </select>
+                </FormField>
+                <FormField label="Destino FTP o ruta local" className="md:col-span-4">
+                  <input className={inputBaseClassName} list={`ftp-options-${index}`} value={job.destination || ''} onChange={event => updateJob(index, 'destination', event.target.value)} placeholder="ftp_main o C:\\Exports" />
+                  <datalist id={`ftp-options-${index}`}>{ftpServers.map(([name]) => <option key={name} value={name} />)}</datalist>
+                </FormField>
+                <FormField label="Programación Cron" className="md:col-span-4" hint="minuto hora día mes semana">
+                  <input className={cn(inputBaseClassName, 'font-mono')} value={job.schedule || ''} onChange={event => updateJob(index, 'schedule', event.target.value)} placeholder="0 * * * *" />
+                </FormField>
+                <div className="col-span-12 flex justify-end">
+                  <button type="button" onClick={() => runJob(job, index)} disabled={running[index]} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60">
+                    {running[index] ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                    {running[index] ? 'Ejecutando...' : 'Ejecutar ahora'}
+                  </button>
+                </div>
+              </ConnectionCard>
+            ))}
+          </ConnectionSection>
+        </div>
+      ) : (
+        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-4 border-b border-gray-100 pb-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-950">Log de eventos</h2>
+              <p className="mt-1 text-sm text-gray-500">Diagnóstico del Exportador sin acceder manualmente al servidor.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={fetchLogs} disabled={logsLoading} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+                <RefreshCw className={cn('h-4 w-4', logsLoading && 'animate-spin')} /> Actualizar
+              </button>
+              <a href={`${API_URL}/api/logs/${logType}/download`} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                <Download className="h-4 w-4" /> Descargar
+              </a>
+            </div>
+          </div>
+          <div className="my-5 grid gap-3 md:grid-cols-12">
+            <FormField label="Archivo" className="md:col-span-3">
+              <select className={inputBaseClassName} value={logType} onChange={event => setLogType(event.target.value)}>
+                <option value="combined">Todos los eventos</option><option value="error">Solo errores</option>
+              </select>
+            </FormField>
+            <FormField label="Nivel" className="md:col-span-3">
+              <select className={inputBaseClassName} value={logLevel} onChange={event => setLogLevel(event.target.value)}>
+                <option value="all">Todos</option><option value="error">Error</option><option value="warn">Advertencia</option><option value="info">Información</option>
+              </select>
+            </FormField>
+            <FormField label="Buscar" className="md:col-span-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <input className={cn(inputBaseClassName, 'pl-9')} value={logSearch} onChange={event => setLogSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') fetchLogs() }} placeholder="Timeout, CASA VIRGINIA, job..." />
+              </div>
+            </FormField>
+          </div>
+          <div className="max-h-[36rem] overflow-auto rounded-xl bg-slate-950 p-4 font-mono text-xs text-slate-200 shadow-inner">
+            {logsLoading ? (
+              <div className="flex items-center justify-center py-16 text-slate-400"><LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> Cargando eventos...</div>
+            ) : logs.entries?.length ? logs.entries.map((entry, index) => (
+              <div key={`${entry.timestamp}-${index}`} className="grid gap-2 border-b border-slate-800 py-2 last:border-0 md:grid-cols-[170px_70px_1fr]">
+                <span className="text-slate-500">{entry.timestamp ? new Date(entry.timestamp).toLocaleString() : '—'}</span>
+                <span className={cn('font-bold uppercase', entry.level === 'error' ? 'text-red-400' : entry.level === 'warn' ? 'text-amber-400' : 'text-sky-400')}>{entry.level}</span>
+                <span className="break-words">{entry.message}</span>
+              </div>
+            )) : (
+              <div className="py-16 text-center text-slate-500">{logs.exists ? 'No hay eventos con estos filtros.' : 'El archivo de log todavía no contiene eventos.'}</div>
+            )}
+          </div>
+        </section>
+      )}
+    </ConfigLayout>
+  )
+}
+
+export default App
