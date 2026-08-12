@@ -4,6 +4,7 @@ const path = require('path');
 const { normalizeSqlServerConfig, parseServerTarget } = require('../src/sqlServerConfig');
 const { buildTediousConfig } = require('../src/tediousClient');
 const { JobExecutor } = require('../src/jobExecutor');
+const { parseLogLine, resolveLogFile } = require('../src/logReader');
 
 const tests = [];
 function test(name, fn) {
@@ -79,6 +80,19 @@ test('SQL factory uses an isolated direct TDS connection', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'dbFactory.js'), 'utf8');
     assert.strictEqual(source.includes("require('mssql')"), false);
     assert.strictEqual(source.includes('tediousClient.openConnection'), true);
+});
+
+test('Log reader parses structured and legacy entries', () => {
+    const structured = parseLogLine('{"timestamp":"2026-08-12T12:00:00.000Z","level":"error","message":"Timeout"}');
+    assert.strictEqual(structured.level, 'error');
+    assert.strictEqual(structured.message, 'Timeout');
+    const legacy = parseLogLine('legacy event');
+    assert.strictEqual(legacy.message, 'legacy event');
+});
+
+test('Log reader only resolves supported files', () => {
+    assert.strictEqual(resolveLogFile('error').fileName, 'error.log');
+    assert.throws(() => resolveLogFile('../config'), error => error.code === 'INVALID_LOG_TYPE');
 });
 
 (async () => {

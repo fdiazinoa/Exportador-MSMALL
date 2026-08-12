@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
-const path = require('path');
 const configLoader = require('./configLoader');
 const dbFactory = require('./dbFactory');
 const ftpUploader = require('./ftpUploader'); // We might need to adjust ftpUploader to support a test method
@@ -9,6 +8,7 @@ const logger = require('./logger');
 const jobExecutor = require('./jobExecutor');
 const packageInfo = require('../package.json');
 const buildInfo = require('./buildInfo');
+const { readLog, resolveLogFile } = require('./logReader');
 
 const router = express.Router();
 
@@ -29,6 +29,31 @@ router.get('/health', (req, res) => {
         edition: buildInfo.edition,
         jobs: jobExecutor.status(),
     });
+});
+
+router.get('/logs/:type', (req, res) => {
+    try {
+        const result = readLog(req.params.type, req.query);
+        res.json({
+            type: result.type,
+            fileName: result.fileName,
+            exists: result.exists,
+            lines: result.lines,
+            entries: result.entries,
+        });
+    } catch (error) {
+        res.status(error.code === 'INVALID_LOG_TYPE' ? 400 : 500).json({ error: error.message });
+    }
+});
+
+router.get('/logs/:type/download', (req, res) => {
+    try {
+        const target = resolveLogFile(req.params.type);
+        if (!fs.existsSync(target.filePath)) return res.status(404).json({ error: 'El archivo de log todavía no existe.' });
+        return res.download(target.filePath, target.fileName);
+    } catch (error) {
+        return res.status(error.code === 'INVALID_LOG_TYPE' ? 400 : 500).json({ error: error.message });
+    }
 });
 
 // Save Config
