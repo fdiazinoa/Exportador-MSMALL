@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import axios from 'axios'
 import {
   Activity,
+  Cloud,
   Database,
   Download,
   FileText,
@@ -25,6 +26,33 @@ import { cn } from './lib/cn'
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3000')
 const emptyLogs = { entries: [], exists: false, fileName: '' }
 
+function createWebServiceTemplate() {
+  return {
+    baseUrl: '',
+    clientId: '',
+    clientSecret: '',
+    mallId: '',
+    localId: '',
+    configId: '',
+    mode: 'sync_rows',
+    chunkSize: 100,
+    timeoutMs: 30000,
+    syncPath: '/api/v1/exporter/sync/ingest',
+    manualExecutePath: '/api/v1/remote/execute-manual/exporter',
+    auth: { tokenPath: '/auth/token', refreshPath: '/auth/refresh' },
+  }
+}
+
+function uniqueKey(collection, baseName) {
+  let key = baseName
+  let suffix = 2
+  while (collection && collection[key]) {
+    key = `${baseName}_${suffix}`
+    suffix += 1
+  }
+  return key
+}
+
 function errorMessage(error) {
   return error.response?.data?.error || error.message || 'Error inesperado'
 }
@@ -33,7 +61,7 @@ function App() {
   const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState('configuration')
+  const [activeTab, setActiveTab] = useState('connections')
   const [toast, setToast] = useState(null)
   const [health, setHealth] = useState(null)
   const [testing, setTesting] = useState({})
@@ -131,6 +159,39 @@ function App() {
     }))
   }
 
+  const updateWebService = (key, field, value) => {
+    setConfig(current => ({
+      ...current,
+      webServices: {
+        ...(current.webServices || {}),
+        [key]: { ...current.webServices[key], [field]: value },
+      },
+    }))
+  }
+
+  const addWebService = () => {
+    setConfig(current => {
+      const key = uniqueKey(current.webServices || {}, 'msmall_new')
+      return {
+        ...current,
+        webServices: { ...(current.webServices || {}), [key]: createWebServiceTemplate() },
+      }
+    })
+  }
+
+  const removeWebService = key => {
+    const referenced = (config.jobs || []).filter(job => job.destinationType === 'webservice' && job.destination === key)
+    if (referenced.length) {
+      notify('error', 'Servicio en uso', `Está referenciado por: ${referenced.map(job => job.name).join(', ')}`)
+      return
+    }
+    setConfig(current => {
+      const webServices = { ...(current.webServices || {}) }
+      delete webServices[key]
+      return { ...current, webServices }
+    })
+  }
+
   const updateJob = (index, field, value) => {
     setConfig(current => ({
       ...current,
@@ -142,8 +203,25 @@ function App() {
     const statusKey = `${kind}:${key}`
     setTesting(current => ({ ...current, [statusKey]: true }))
     try {
+      if (kind === 'webservice') {
+        const saved = await saveConfig({ silent: true })
+        if (!saved) {
+          setTesting(current => ({ ...current, [statusKey]: false }))
+          return
+        }
+      }
       const payload = kind === 'db' ? { connectionName: key } : { serverName: key }
       const response = await axios.post(`${API_URL}/api/test/${kind}`, payload)
+      const identity = response.data?.token?.resolvedIdentity
+      if (kind === 'webservice' && identity) {
+        setConfig(current => ({
+          ...current,
+          webServices: {
+            ...current.webServices,
+            [key]: { ...current.webServices[key], mallId: identity.mallId || '', localId: identity.localId || '' },
+          },
+        }))
+      }
       setTesting(current => ({ ...current, [statusKey]: false, [`${statusKey}:status`]: { type: 'success', message: response.data.message } }))
     } catch (error) {
       setTesting(current => ({ ...current, [statusKey]: false, [`${statusKey}:status`]: { type: 'error', message: errorMessage(error) } }))
@@ -160,6 +238,7 @@ function App() {
         query: 'SELECT * FROM Tabla',
         mapping: {},
         format: 'csv',
+        destinationType: 'local',
         destination: '',
         schedule: '0 * * * *',
       }],
@@ -216,6 +295,7 @@ function App() {
 
   const databases = Object.entries(config.databases || {})
   const ftpServers = Object.entries(config.ftpServers || {})
+  const webServices = Object.entries(config.webServices || {})
   const jobs = config.jobs || []
 
   return (
@@ -239,10 +319,17 @@ function App() {
       <div className="mb-8 inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm">
         <button
           type="button"
-          onClick={() => setActiveTab('configuration')}
-          className={cn('inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition', activeTab === 'configuration' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50')}
+          onClick={() => setActiveTab('connections')}
+          className={cn('inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition', activeTab === 'connections' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50')}
         >
-          <Activity className="h-4 w-4" /> Configuración
+          <Activity className="h-4 w-4" /> Conexiones
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('services')}
+          className={cn('inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition', activeTab === 'services' ? 'bg-blue-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50')}
+        >
+          <Cloud className="h-4 w-4" /> Servicios
         </button>
         <button
           type="button"
@@ -253,7 +340,7 @@ function App() {
         </button>
       </div>
 
-      {activeTab === 'configuration' ? (
+      {activeTab === 'connections' ? (
         <div className="space-y-10">
           <ConnectionSection icon={Database} title="Conexiones de base de datos" description="Orígenes usados por los jobs de exportación." isEmpty={!databases.length} emptyMessage="No hay conexiones configuradas.">
             {databases.map(([key, database]) => {
@@ -352,6 +439,76 @@ function App() {
               )
             })}
           </ConnectionSection>
+        </div>
+      ) : activeTab === 'services' ? (
+        <div className="space-y-10">
+          <ConnectionSection
+            icon={Cloud}
+            title="Web Services MsMall"
+            description="Service Accounts y destinos API usados por los jobs."
+            isEmpty={!webServices.length}
+            emptyMessage="No hay Web Services configurados."
+            actions={<button type="button" onClick={addWebService} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Plus className="h-4 w-4" /> Agregar Web Service</button>}
+          >
+            {webServices.map(([key, webService]) => {
+              const statusKey = `webservice:${key}`
+              const mode = webService.mode || 'sync_rows'
+              const referencedJobs = jobs.filter(job => job.destinationType === 'webservice' && job.destination === key)
+              return (
+                <ConnectionCard
+                  key={key}
+                  name={key}
+                  typeLabel="MSMALL"
+                  tone="sky"
+                  onTest={() => testConnection('webservice', key)}
+                  onDelete={() => removeWebService(key)}
+                  deleteTitle={referencedJobs.length ? `Usado por ${referencedJobs.map(job => job.name).join(', ')}` : `Eliminar ${key}`}
+                  testing={testing[statusKey]}
+                  status={testing[`${statusKey}:status`]}
+                  notice={referencedJobs.length ? `Conexión referenciada por: ${referencedJobs.map(job => job.name).join(', ')}.` : null}
+                >
+                  <div className="col-span-12 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+                    <p className="font-semibold">Cómo configurar MsMall</p>
+                    <p className="mt-1">Client ID y Client Secret se obtienen al crear el Service Account. Mall ID y Local ID se completan al probar la conexión.</p>
+                  </div>
+                  <FormField label="Base URL" className="md:col-span-8">
+                    <input className={inputBaseClassName} value={webService.baseUrl || ''} onChange={event => updateWebService(key, 'baseUrl', event.target.value)} placeholder="https://msmall-api.example.com" />
+                  </FormField>
+                  <FormField label="Modo" className="md:col-span-4">
+                    <select className={inputBaseClassName} value={mode} onChange={event => updateWebService(key, 'mode', event.target.value)}>
+                      <option value="sync_rows">sync_rows (recomendado)</option>
+                      <option value="manual_execute">manual_execute</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Client ID" className="md:col-span-6" hint="Normalmente empieza con msa_.">
+                    <input className={inputBaseClassName} value={webService.clientId || ''} onChange={event => updateWebService(key, 'clientId', event.target.value)} placeholder="msa_xxxxxxxxxxxxxxxx" />
+                  </FormField>
+                  <SecretField label="Client Secret" className="md:col-span-6" value={webService.clientSecret || ''} onChange={value => updateWebService(key, 'clientSecret', value)} />
+                  <FormField label="Mall ID" className="md:col-span-4" hint="Autocompletado desde el token exporter.">
+                    <input readOnly className={cn(inputBaseClassName, 'bg-gray-100 text-gray-500')} value={webService.mallId || ''} placeholder="Probar conexión" />
+                  </FormField>
+                  <FormField label="Local ID" className="md:col-span-4" hint="Autocompletado desde el token exporter.">
+                    <input readOnly className={cn(inputBaseClassName, 'bg-gray-100 text-gray-500')} value={webService.localId || ''} placeholder="Probar conexión" />
+                  </FormField>
+                  <FormField label="Chunk Size" className="md:col-span-2">
+                    <input type="number" min="1" className={inputBaseClassName} value={webService.chunkSize || 100} onChange={event => updateWebService(key, 'chunkSize', Number(event.target.value))} />
+                  </FormField>
+                  <FormField label="Timeout (ms)" className="md:col-span-2">
+                    <input type="number" min="1000" className={inputBaseClassName} value={webService.timeoutMs || 30000} onChange={event => updateWebService(key, 'timeoutMs', Number(event.target.value))} />
+                  </FormField>
+                  <FormField label="Config ID" className="md:col-span-4" hint={mode === 'manual_execute' ? 'Obligatorio para ejecución manual.' : 'No aplica en sync_rows.'}>
+                    <input disabled={mode !== 'manual_execute'} className={cn(inputBaseClassName, mode !== 'manual_execute' && 'bg-gray-100 text-gray-400')} value={webService.configId || ''} onChange={event => updateWebService(key, 'configId', event.target.value)} />
+                  </FormField>
+                  <FormField label="Sync Path" className="md:col-span-4">
+                    <input className={inputBaseClassName} value={webService.syncPath || ''} onChange={event => updateWebService(key, 'syncPath', event.target.value)} />
+                  </FormField>
+                  <FormField label="Manual Execute Path" className="md:col-span-4">
+                    <input className={inputBaseClassName} value={webService.manualExecutePath || ''} onChange={event => updateWebService(key, 'manualExecutePath', event.target.value)} />
+                  </FormField>
+                </ConnectionCard>
+              )
+            })}
+          </ConnectionSection>
 
           <ConnectionSection
             icon={ListChecks}
@@ -361,7 +518,10 @@ function App() {
             emptyMessage="No hay jobs configurados."
             actions={<button type="button" onClick={addJob} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Plus className="h-4 w-4" /> Nuevo Job</button>}
           >
-            {jobs.map((job, index) => (
+            {jobs.map((job, index) => {
+              const destinationType = job.destinationType || (ftpServers.some(([name]) => name === job.destination) ? 'ftp' : webServices.some(([name]) => name === job.destination) ? 'webservice' : 'local')
+              const destinationOptions = destinationType === 'webservice' ? webServices : ftpServers
+              return (
               <ConnectionCard key={`${job.name}-${index}`} name={job.name || `Job ${index + 1}`} typeLabel={job.type || job.format || 'job'} tone="violet" onDelete={() => removeJob(index)} deleteTitle="Eliminar Job">
                 <FormField label="Nombre" className="md:col-span-6">
                   <input className={inputBaseClassName} value={job.name || ''} onChange={event => updateJob(index, 'name', event.target.value)} />
@@ -397,9 +557,26 @@ function App() {
                     <option value="csv">CSV</option><option value="json">JSON</option><option value="txt">TXT</option>
                   </select>
                 </FormField>
-                <FormField label="Destino FTP o ruta local" className="md:col-span-4">
-                  <input className={inputBaseClassName} list={`ftp-options-${index}`} value={job.destination || ''} onChange={event => updateJob(index, 'destination', event.target.value)} placeholder="ftp_main o C:\\Exports" />
-                  <datalist id={`ftp-options-${index}`}>{ftpServers.map(([name]) => <option key={name} value={name} />)}</datalist>
+                <FormField label="Tipo de destino" className="md:col-span-4">
+                  <select className={inputBaseClassName} value={destinationType} onChange={event => {
+                    const type = event.target.value
+                    updateJob(index, 'destinationType', type)
+                    updateJob(index, 'destination', type === 'webservice' ? webServices[0]?.[0] || '' : type === 'ftp' ? ftpServers[0]?.[0] || '' : '')
+                  }}>
+                    <option value="local">Ruta local</option>
+                    <option value="ftp">FTP / SFTP</option>
+                    <option value="webservice">Web Service MsMall</option>
+                  </select>
+                </FormField>
+                <FormField label={destinationType === 'local' ? 'Ruta local' : 'Destino'} className="md:col-span-4">
+                  {destinationType === 'local' ? (
+                    <input className={inputBaseClassName} value={job.destination || ''} onChange={event => updateJob(index, 'destination', event.target.value)} placeholder="C:\\Exports" />
+                  ) : (
+                    <select className={inputBaseClassName} value={job.destination || ''} onChange={event => updateJob(index, 'destination', event.target.value)}>
+                      <option value="">Seleccionar...</option>
+                      {destinationOptions.map(([name]) => <option key={name} value={name}>{name}</option>)}
+                    </select>
+                  )}
                 </FormField>
                 <FormField label="Programación Cron" className="md:col-span-4" hint="minuto hora día mes semana">
                   <input className={cn(inputBaseClassName, 'font-mono')} value={job.schedule || ''} onChange={event => updateJob(index, 'schedule', event.target.value)} placeholder="0 * * * *" />
@@ -411,7 +588,8 @@ function App() {
                   </button>
                 </div>
               </ConnectionCard>
-            ))}
+              )
+            })}
           </ConnectionSection>
         </div>
       ) : (
