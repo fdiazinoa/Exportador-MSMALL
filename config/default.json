@@ -43,6 +43,7 @@
             "secure": false
         }
     },
+    "webServices": {},
     "jobs": [
         {
             "name": "DailySales",

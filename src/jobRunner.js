@@ -3,6 +3,9 @@ const dataExtractor = require('./dataExtractor');
 const dataMapper = require('./dataMapper');
 const fileExporter = require('./fileExporter');
 const ftpUploader = require('./ftpUploader');
+const webServiceUploader = require('./webServiceUploader');
+const { normalizeRowsForWebservice } = require('./webServiceRowNormalizer');
+const { resolveDestinationTarget } = require('./destinationResolver');
 const logger = require('./logger');
 const fs = require('fs');
 const pushTicketsFacturasHiOffice = require('./PushTicketsFacturasHiOffice');
@@ -40,22 +43,32 @@ async function runJob(jobName) {
         // 2. Map
         const mappedData = dataMapper.map(data, job.mapping || job.mappingFile);
 
-        // 3. Export
-        // Check if destination is a configured FTP server or a local path
-        let exportPath = null;
-        if (job.destination && (!config.ftpServers || !config.ftpServers[job.destination])) {
-            // It's likely a local path
-            exportPath = job.destination;
+        // 3. Resolve destination and normalize the MsMall contract when enabled.
+        const destination = resolveDestinationTarget(config, job.destinationType, job.destination);
+        let deliveryData = mappedData;
+        let webserviceMeta = {};
+        if (destination.type === 'webservice') {
+            const normalized = normalizeRowsForWebservice(mappedData, job);
+            deliveryData = normalized.rows;
+            webserviceMeta = normalized.meta || {};
         }
 
-        const filePath = await fileExporter.export(mappedData, job.format, job.name, exportPath);
+        // 4. Always create the local export before secondary delivery.
+        const exportPath = destination.type === 'local' ? destination.path : null;
+        const filePath = await fileExporter.export(deliveryData, job.format, job.name, exportPath);
 
-        // 4. Upload
-        if (job.destination && config.ftpServers && config.ftpServers[job.destination]) {
-            await ftpUploader.upload(filePath, job.destination);
+        // 5. Deliver through the selected connection.
+        if (destination.type === 'ftp' && destination.key) {
+            await ftpUploader.upload(filePath, destination.key);
+        } else if (destination.type === 'webservice' && destination.key) {
+            await webServiceUploader.upload(filePath, destination.key, {
+                job,
+                mappedData: deliveryData,
+                meta: webserviceMeta,
+            });
         }
 
-        // 5. Update Last Run
+        // 6. Update Last Run
         job.lastRun = new Date().toISOString();
 
         // Persist config update
@@ -67,7 +80,7 @@ async function runJob(jobName) {
         }
 
         logger.info(`Job ${jobName} completed successfully.`);
-        return { success: true, message: `Job '${jobName}' executed successfully.` };
+        return { success: true, message: `Job '${jobName}' executed successfully.`, destination: destination.type };
 
     } catch (error) {
         logger.error(`Job ${jobName} failed: ${error.message}`);

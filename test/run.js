@@ -1,10 +1,15 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+const http = require('http');
 const { normalizeSqlServerConfig, parseServerTarget } = require('../src/sqlServerConfig');
 const { buildTediousConfig } = require('../src/tediousClient');
 const { JobExecutor } = require('../src/jobExecutor');
 const { parseLogLine, resolveLogFile } = require('../src/logReader');
+const { resolveDestinationTarget } = require('../src/destinationResolver');
+const configLoader = require('../src/configLoader');
+const webServiceAuth = require('../src/webServiceAuth');
 
 const tests = [];
 function test(name, fn) {
@@ -93,6 +98,40 @@ test('Log reader parses structured and legacy entries', () => {
 test('Log reader only resolves supported files', () => {
     assert.strictEqual(resolveLogFile('error').fileName, 'error.log');
     assert.throws(() => resolveLogFile('../config'), error => error.code === 'INVALID_LOG_TYPE');
+});
+
+test('Destination resolver supports explicit and legacy webservice jobs', () => {
+    const config = { ftpServers: { ftp_main: {} }, webServices: { msmall_main: {} } };
+    assert.deepStrictEqual(resolveDestinationTarget(config, 'webservice', 'msmall_main'), { type: 'webservice', key: 'msmall_main' });
+    assert.deepStrictEqual(resolveDestinationTarget(config, '', 'msmall_main'), { type: 'webservice', key: 'msmall_main' });
+    assert.deepStrictEqual(resolveDestinationTarget(config, 'local', 'C:\\Exports'), { type: 'local', path: 'C:\\Exports' });
+});
+
+test('MsMall Service Account test persists identity from exporter token', async () => {
+    const identity = { mall_id: '11111111-1111-4111-8111-111111111111', local_id: '22222222-2222-4222-8222-222222222222', exp: Math.floor(Date.now() / 1000) + 3600 };
+    const jwtPayload = Buffer.from(JSON.stringify(identity)).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+    const server = http.createServer((request, response) => {
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ access_token: `header.${jwtPayload}.signature`, refresh_token: 'refresh', expires_in: 3600 }));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const originalPath = configLoader.configPath;
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exportador-v16-webservice-'));
+    const tempConfig = path.join(tempDir, 'config.json');
+    configLoader.configPath = tempConfig;
+    fs.writeFileSync(tempConfig, JSON.stringify({ webServices: { msmall_test: { baseUrl: `http://127.0.0.1:${server.address().port}`, clientId: 'msa_test', clientSecret: 'secret', timeoutMs: 2000 } } }));
+    try {
+        const result = await webServiceAuth.testConnection('msmall_test');
+        assert.strictEqual(result.resolvedIdentity.mallId, identity.mall_id);
+        assert.strictEqual(result.resolvedIdentity.localId, identity.local_id);
+        const saved = JSON.parse(fs.readFileSync(tempConfig, 'utf8'));
+        assert.strictEqual(saved.webServices.msmall_test.mallId, identity.mall_id);
+        assert.strictEqual(saved.webServices.msmall_test.localId, identity.local_id);
+    } finally {
+        configLoader.configPath = originalPath;
+        await new Promise(resolve => server.close(resolve));
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
 });
 
 (async () => {

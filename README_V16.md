@@ -24,6 +24,16 @@ Los modos de seguridad son `modern`, `legacy_tls1` y `unencrypted`. TLS 1.0 y
 la conexion sin cifrado deben limitarse a redes controladas donde no sea viable
 actualizar SQL Server.
 
+## Web Services MsMall
+
+La pestaña `Servicios` permite crear conexiones MsMall con Service Account,
+probar la autenticacion y usarlas como destino de un job. Para cada conexion se
+requieren `Base URL`, `Client ID` y `Client Secret`; `Mall ID` y `Local ID` se
+resuelven automaticamente desde el token exporter al probar la conexion.
+
+Los modos soportados son `sync_rows` (recomendado) y `manual_execute`. El segundo
+requiere ademas el `Config ID` asignado en MsMall.
+
 ## Compilacion
 
 ```bash

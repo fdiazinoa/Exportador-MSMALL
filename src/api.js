@@ -4,6 +4,7 @@ const fs = require('fs');
 const configLoader = require('./configLoader');
 const dbFactory = require('./dbFactory');
 const ftpUploader = require('./ftpUploader'); // We might need to adjust ftpUploader to support a test method
+const webServiceUploader = require('./webServiceUploader');
 const logger = require('./logger');
 const jobExecutor = require('./jobExecutor');
 const packageInfo = require('../package.json');
@@ -12,11 +13,37 @@ const { readLog, resolveLogFile } = require('./logReader');
 
 const router = express.Router();
 
+function sanitizeConfigForClient(config) {
+    const cloned = JSON.parse(JSON.stringify(config || {}));
+    const webServices = cloned.webServices || {};
+    Object.keys(webServices).forEach(key => {
+        const state = webServices[key].authState;
+        if (!state) return;
+        if (state.accessToken) state.accessToken = '[REDACTED]';
+        if (state.refreshToken) state.refreshToken = '[REDACTED]';
+    });
+    return cloned;
+}
+
+function preserveAuthState(incomingConfig, currentConfig) {
+    const nextConfig = JSON.parse(JSON.stringify(incomingConfig || {}));
+    nextConfig.webServices = nextConfig.webServices || {};
+    const currentWebServices = currentConfig.webServices || {};
+    Object.keys(nextConfig.webServices).forEach(key => {
+        const next = nextConfig.webServices[key];
+        const current = currentWebServices[key];
+        if (!current || !current.authState) return;
+        const changed = ['baseUrl', 'clientId', 'clientSecret'].some(field => String(next[field] || '') !== String(current[field] || ''));
+        if (!changed) next.authState = current.authState;
+    });
+    return nextConfig;
+}
+
 // Get Config
 router.get('/config', (req, res) => {
     try {
         const config = configLoader.load();
-        res.json(config);
+        res.json(sanitizeConfigForClient(config));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -59,7 +86,8 @@ router.get('/logs/:type/download', (req, res) => {
 // Save Config
 router.post('/config', (req, res) => {
     try {
-        const newConfig = req.body;
+        const currentConfig = configLoader.load();
+        const newConfig = preserveAuthState(req.body, currentConfig);
         // Basic validation could go here
 
         // Write to file
@@ -131,6 +159,22 @@ router.post('/test/ftp', async (req, res) => {
         res.json({ message: 'Connection successful' });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Test MsMall Service Account authentication and resolve Mall/Local identity.
+router.post('/test/webservice', async (req, res) => {
+    const { serverName } = req.body;
+    const config = configLoader.load();
+    if (!config.webServices || !config.webServices[serverName]) {
+        return res.status(404).json({ error: 'Webservice config not found' });
+    }
+    try {
+        const result = await webServiceUploader.testConnection(serverName);
+        return res.json({ message: 'Conexión con MsMall validada.', ...result });
+    } catch (error) {
+        logger.error(`Error testing webservice '${serverName}': ${error.message}`);
+        return res.status(500).json({ error: error.message });
     }
 });
 
