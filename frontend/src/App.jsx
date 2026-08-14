@@ -10,9 +10,13 @@ import {
   LoaderCircle,
   Play,
   Plus,
+  Power,
   RefreshCw,
+  RotateCw,
   Search,
   Server,
+  ShieldCheck,
+  Square,
   UploadCloud,
 } from 'lucide-react'
 import ConfigLayout from './components/config/ConfigLayout'
@@ -81,6 +85,9 @@ function App() {
   const [logLevel, setLogLevel] = useState('all')
   const [logSearch, setLogSearch] = useState('')
   const [logsLoading, setLogsLoading] = useState(false)
+  const [serviceModeStatus, setServiceModeStatus] = useState(null)
+  const [serviceModeLoading, setServiceModeLoading] = useState(false)
+  const [serviceModeAction, setServiceModeAction] = useState('')
 
   const notify = useCallback((type, title, message = '') => {
     setToast({ type, title, message })
@@ -118,9 +125,49 @@ function App() {
     }
   }, [logLevel, logSearch, logType, notify])
 
+  const refreshServiceModeStatus = useCallback(async ({ showError = false } = {}) => {
+    setServiceModeLoading(true)
+    try {
+      const response = await axios.get(`${API_URL}/api/service-mode/status`)
+      setServiceModeStatus(response.data)
+    } catch (error) {
+      setServiceModeStatus({ supported: false, installed: false, state: 'unknown', message: errorMessage(error) })
+      if (showError) notify('error', 'No se pudo consultar el servicio', errorMessage(error))
+    } finally {
+      setServiceModeLoading(false)
+    }
+  }, [notify])
+
   useEffect(() => {
     if (activeTab === 'logs') fetchLogs()
   }, [activeTab, fetchLogs])
+
+  useEffect(() => {
+    if (activeTab === 'services') refreshServiceModeStatus()
+  }, [activeTab, refreshServiceModeStatus])
+
+  const handleServiceModeAction = async action => {
+    if (action === 'uninstall' && !window.confirm('¿Deseas quitar el servicio Windows ExportadorMSMall?')) return
+
+    setServiceModeAction(action)
+    try {
+      const response = await axios.post(`${API_URL}/api/service-mode/${action}`)
+      setServiceModeStatus(response.data.status)
+      const labels = {
+        install: 'Servicio instalado',
+        uninstall: 'Servicio eliminado',
+        start: 'Servicio iniciado',
+        stop: 'Servicio detenido',
+        restart: 'Servicio reiniciado',
+      }
+      notify('success', labels[action] || 'Servicio actualizado', response.data.message)
+    } catch (error) {
+      notify('error', 'No se pudo administrar el servicio', errorMessage(error))
+      await refreshServiceModeStatus()
+    } finally {
+      setServiceModeAction('')
+    }
+  }
 
   const saveConfig = async ({ silent = false } = {}) => {
     setSaving(true)
@@ -318,6 +365,21 @@ function App() {
     if (!latest || timestamp > latest.timestamp) return { job, timestamp }
     return latest
   }, null)
+  const serviceModeInstalled = Boolean(serviceModeStatus?.installed)
+  const serviceModeSupported = Boolean(serviceModeStatus?.supported)
+  const serviceStateLabels = {
+    running: 'En ejecución',
+    stopped: 'Detenido',
+    start_pending: 'Iniciando',
+    stop_pending: 'Deteniendo',
+    not_installed: 'No instalado',
+    unknown: 'Estado desconocido',
+  }
+  const serviceModeLabel = serviceModeLoading || serviceModeStatus === null
+    ? 'Consultando'
+    : !serviceModeSupported
+      ? 'No disponible'
+      : serviceStateLabels[serviceModeStatus.state] || (serviceModeInstalled ? 'Instalado' : 'No instalado')
 
   return (
     <ConfigLayout onSave={() => saveConfig()} saving={saving} saveDisabled={!config}>
@@ -327,7 +389,7 @@ function App() {
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-blue-50 p-2.5 text-blue-700"><Server className="h-5 w-5" /></div>
           <div>
-            <p className="text-sm font-semibold text-gray-950">Exportador V{health?.version || '16.2'}</p>
+            <p className="text-sm font-semibold text-gray-950">Exportador V{health?.version || '16.3'}</p>
             <p className="text-xs text-gray-500">Edición {health?.edition || 'Standard'} · {health?.ok ? 'Servicio disponible' : 'Estado no disponible'}</p>
           </div>
         </div>
@@ -463,6 +525,74 @@ function App() {
         </div>
       ) : activeTab === 'services' ? (
         <div className="space-y-10">
+          <ConnectionSection
+            icon={ShieldCheck}
+            title="Modo Servicio"
+            description="Mantiene el Exportador ejecutándose en segundo plano aunque se cierre la ventana."
+            actions={(
+              <>
+                <button
+                  type="button"
+                  onClick={() => refreshServiceModeStatus({ showError: true })}
+                  disabled={serviceModeLoading || Boolean(serviceModeAction)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                >
+                  <RefreshCw className={cn('h-4 w-4', serviceModeLoading && 'animate-spin')} /> Actualizar estado
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleServiceModeAction(serviceModeInstalled ? 'uninstall' : 'install')}
+                  disabled={serviceModeLoading || Boolean(serviceModeAction) || !serviceModeSupported}
+                  className={cn(
+                    'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-60',
+                    serviceModeInstalled ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700',
+                  )}
+                >
+                  {serviceModeAction ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
+                  {serviceModeInstalled ? 'Quitar servicio' : 'Instalar como servicio'}
+                </button>
+              </>
+            )}
+          >
+            <ConnectionCard
+              name="ExportadorMSMall"
+              typeLabel={serviceModeLabel}
+              tone={serviceModeInstalled ? 'emerald' : 'slate'}
+              description={serviceModeStatus?.message || 'Consultando el estado del servicio Windows...'}
+            >
+              <div className="col-span-12 rounded-lg border border-gray-200 bg-gray-50 p-4 md:col-span-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">Estado</p>
+                <p className="mt-2 text-sm font-semibold text-gray-950">{serviceModeLabel}</p>
+              </div>
+              <div className="col-span-12 rounded-lg border border-gray-200 bg-gray-50 p-4 md:col-span-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">Mecanismo</p>
+                <p className="mt-2 text-sm font-semibold text-gray-950">Servicio Windows · WinSW</p>
+              </div>
+              <div className="col-span-12 rounded-lg border border-gray-200 bg-gray-50 p-4 md:col-span-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">Inicio</p>
+                <p className="mt-2 text-sm font-semibold text-gray-950">Automático con Windows</p>
+              </div>
+
+              {serviceModeInstalled ? (
+                <div className="col-span-12 flex flex-wrap gap-2">
+                  <button type="button" onClick={() => handleServiceModeAction('start')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+                    <Play className="h-4 w-4" /> Iniciar
+                  </button>
+                  <button type="button" onClick={() => handleServiceModeAction('stop')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+                    <Square className="h-4 w-4" /> Detener
+                  </button>
+                  <button type="button" onClick={() => handleServiceModeAction('restart')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+                    <RotateCw className="h-4 w-4" /> Reiniciar
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="col-span-12 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Windows solicitará permisos de administrador durante la instalación. Después podrá cerrar la ventana; el servicio continuará ejecutando los jobs.
+              </div>
+            </ConnectionCard>
+          </ConnectionSection>
+
           <ConnectionSection
             icon={Cloud}
             title="Web Services MsMall"

@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const http = require('http');
+const crypto = require('crypto');
 const { normalizeSqlServerConfig, parseServerTarget } = require('../src/sqlServerConfig');
 const { buildTediousConfig } = require('../src/tediousClient');
 const { JobExecutor } = require('../src/jobExecutor');
@@ -10,6 +11,7 @@ const { parseLogLine, resolveLogFile } = require('../src/logReader');
 const { resolveDestinationTarget } = require('../src/destinationResolver');
 const configLoader = require('../src/configLoader');
 const webServiceAuth = require('../src/webServiceAuth');
+const windowsServiceManager = require('../src/windowsServiceManager');
 
 const tests = [];
 function test(name, fn) {
@@ -105,6 +107,33 @@ test('Destination resolver supports explicit and legacy webservice jobs', () => 
     assert.deepStrictEqual(resolveDestinationTarget(config, 'webservice', 'msmall_main'), { type: 'webservice', key: 'msmall_main' });
     assert.deepStrictEqual(resolveDestinationTarget(config, '', 'msmall_main'), { type: 'webservice', key: 'msmall_main' });
     assert.deepStrictEqual(resolveDestinationTarget(config, 'local', 'C:\\Exports'), { type: 'local', path: 'C:\\Exports' });
+});
+
+test('Windows service manager parses English and Spanish service states', () => {
+    assert.strictEqual(windowsServiceManager.parseScState('STATE              : 4  RUNNING'), 'running');
+    assert.strictEqual(windowsServiceManager.parseScState('ESTADO             : 1  STOPPED'), 'stopped');
+    assert.strictEqual(windowsServiceManager.MECHANISM, 'windows_service_winsw');
+});
+
+test('Windows service mode is reported as unavailable outside Windows', async () => {
+    if (process.platform === 'win32') return;
+    const status = await windowsServiceManager.getStatus();
+    assert.strictEqual(status.supported, false);
+    assert.strictEqual(status.installed, false);
+    assert.strictEqual(status.serviceName, 'ExportadorMSMall');
+});
+
+test('Windows service assets are present and configured for automatic startup', () => {
+    const wrapperPath = path.join(__dirname, '..', 'packaging', 'ExportadorMSMallService.exe');
+    const installScript = fs.readFileSync(path.join(__dirname, '..', 'packaging', 'install-startup-task.ps1'), 'utf8');
+    const buildScript = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'build-edition.js'), 'utf8');
+    assert.strictEqual(fs.existsSync(wrapperPath), true);
+    assert.strictEqual(
+        crypto.createHash('sha256').update(fs.readFileSync(wrapperPath)).digest('hex'),
+        '5859b114d96800a2b98ef9d19eaa573a786a422dad324547ef25be181389df01',
+    );
+    assert.strictEqual(installScript.includes('<startmode>Automatic</startmode>'), true);
+    assert.strictEqual(buildScript.includes("'ExportadorMSMallService.exe'"), true);
 });
 
 test('MsMall Service Account test persists identity from exporter token', async () => {
