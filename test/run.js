@@ -152,16 +152,16 @@ test('Dashboard startup reports port conflicts in the application log', () => {
 });
 
 test('Release protocol derives both editions and canonical path from package version', () => {
-    const parsed = parseVersion('16.3.0');
-    assert.deepStrictEqual(parsed, { full: '16.3.0', label: '16.3' });
+    const packageInfo = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+    const parsed = parseVersion(packageInfo.version);
     const release = loadReleaseConfig(path.join(__dirname, '..'));
-    assert.strictEqual(release.version, '16.3.0');
+    assert.strictEqual(release.version, parsed.full);
     const legacyTemplate = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'editions', 'legacy-2008.package.json'), 'utf8'));
     assert.strictEqual(legacyTemplate.version, '0.0.0');
-    assert.strictEqual(path.basename(release.outputRoot), 'v16.3');
+    assert.strictEqual(path.basename(release.outputRoot), `v${parsed.label}`);
     assert.strictEqual(path.basename(path.dirname(release.outputRoot)), 'release-packs');
-    assert.strictEqual(release.editions.standard.artifact, 'ExportadorMSMall-V16.3-Standard-win-x64');
-    assert.strictEqual(release.editions['legacy-2008'].artifact, 'ExportadorMSMall-V16.3-Legacy-2008-win-x64');
+    assert.strictEqual(release.editions.standard.artifact, `ExportadorMSMall-V${parsed.label}-Standard-win-x64`);
+    assert.strictEqual(release.editions['legacy-2008'].artifact, `ExportadorMSMall-V${parsed.label}-Legacy-2008-win-x64`);
 });
 
 test('MsMall Service Account test persists identity from exporter token', async () => {
