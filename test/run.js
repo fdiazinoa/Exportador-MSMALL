@@ -151,7 +151,11 @@ test('Windows service assets are present and configured for automatic startup', 
     assert.strictEqual(installScript.includes('Migrando servicio desde'), true);
     assert.strictEqual(installScript.includes('sc.exe delete $ServiceName'), true);
     assert.strictEqual(handoffScript.includes('Get-Process -Id $ParentProcessId'), true);
-    assert.strictEqual(handoffScript.includes('& $serviceExe stop'), true);
+    assert.strictEqual(handoffScript.includes("$service.Status -eq 'Running'"), true);
+    assert.strictEqual(handoffScript.includes('Restart-Service -Name $ServiceName'), true);
+    assert.strictEqual(handoffScript.includes('Start-Service -Name $ServiceName'), true);
+    assert.strictEqual(handoffScript.includes('http://127.0.0.1:3000/api/health'), true);
+    assert.strictEqual(handoffScript.includes('Start-Process -FilePath $appExe'), true);
     assert.strictEqual(buildScript.includes("'ExportadorMSMallService.exe'"), true);
     assert.strictEqual(buildScript.includes("'start-service-after-exit.ps1'"), true);
 });
