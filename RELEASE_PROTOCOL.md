@@ -28,8 +28,8 @@ de `scripts/build-edition.js`.
    ```
 
 3. Confirmar que no existan cambios pendientes con `git status`.
-4. Actualizar únicamente `version` en `package.json` y sincronizar la misma
-   versión en `editions/legacy-2008.package.json` mediante un PR previo.
+4. Actualizar únicamente `version` en `package.json` mediante un PR previo. El
+   empaquetador aplica automáticamente esa versión a las dos ediciones.
 
 ## Generación
 
@@ -44,7 +44,7 @@ El comando se detiene automáticamente cuando:
 - la rama no es `develop`;
 - `develop` no coincide con `origin/develop`;
 - existen cambios locales o archivos sin confirmar;
-- las versiones Standard y Legacy no coinciden;
+- la versión de `package.json` no usa el formato `MAJOR.MINOR.PATCH`;
 - fallan pruebas, lint o build del frontend;
 - falta algún archivo obligatorio del Pack;
 - no se generan las dos ediciones.

@@ -144,6 +144,8 @@ test('Release protocol derives both editions and canonical path from package ver
     assert.deepStrictEqual(parsed, { full: '16.3.0', label: '16.3' });
     const release = loadReleaseConfig(path.join(__dirname, '..'));
     assert.strictEqual(release.version, '16.3.0');
+    const legacyTemplate = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'editions', 'legacy-2008.package.json'), 'utf8'));
+    assert.strictEqual(legacyTemplate.version, '0.0.0');
     assert.strictEqual(path.basename(release.outputRoot), 'v16.3');
     assert.strictEqual(path.basename(path.dirname(release.outputRoot)), 'release-packs');
     assert.strictEqual(release.editions.standard.artifact, 'ExportadorMSMall-V16.3-Standard-win-x64');

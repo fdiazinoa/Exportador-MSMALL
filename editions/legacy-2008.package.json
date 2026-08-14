@@ -1,6 +1,6 @@
 {
   "name": "exportador-msmall-v16-legacy-2008",
-  "version": "16.3.0",
+  "version": "0.0.0",
   "private": true,
   "main": "index.js",
   "bin": "index.js",

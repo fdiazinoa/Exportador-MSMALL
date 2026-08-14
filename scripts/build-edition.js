@@ -29,7 +29,9 @@ function prepareLegacyStage() {
     const stage = path.join(projectRoot, '.build', 'legacy-2008');
     fs.rmSync(stage, { recursive: true, force: true });
     fs.mkdirSync(stage, { recursive: true });
-    fs.copyFileSync(path.join(projectRoot, 'editions', 'legacy-2008.package.json'), path.join(stage, 'package.json'));
+    const legacyPackage = JSON.parse(fs.readFileSync(path.join(projectRoot, 'editions', 'legacy-2008.package.json'), 'utf8'));
+    legacyPackage.version = releaseConfig.version;
+    fs.writeFileSync(path.join(stage, 'package.json'), `${JSON.stringify(legacyPackage, null, 2)}\n`);
     fs.copyFileSync(path.join(projectRoot, 'index.js'), path.join(stage, 'index.js'));
     copyTree(path.join(projectRoot, 'src'), path.join(stage, 'src'));
     copyTree(path.join(projectRoot, 'frontend', 'dist'), path.join(stage, 'frontend', 'dist'));

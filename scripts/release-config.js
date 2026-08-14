@@ -12,12 +12,7 @@ function parseVersion(version) {
 
 function loadReleaseConfig(projectRoot) {
     const packageInfo = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
-    const legacyPackage = JSON.parse(fs.readFileSync(path.join(projectRoot, 'editions', 'legacy-2008.package.json'), 'utf8'));
     const version = parseVersion(packageInfo.version);
-
-    if (legacyPackage.version !== version.full) {
-        throw new Error(`Version inconsistente: package.json=${version.full}, Legacy=${legacyPackage.version}.`);
-    }
 
     const outputRoot = path.join(projectRoot, 'release-packs', `v${version.label}`);
     return {
