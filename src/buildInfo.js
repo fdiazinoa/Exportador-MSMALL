@@ -5,7 +5,7 @@ function loadBuildInfo() {
     try {
         return JSON.parse(fs.readFileSync(resolveRuntimePath('build-info.json'), 'utf8'));
     } catch (error) {
-        return { edition: process.env.EXPORTADOR_EDITION || 'development', version: '16.0.0' };
+        return { edition: process.env.EXPORTADOR_EDITION || 'development', version: '16.2.0' };
     }
 }
 

@@ -44,4 +44,4 @@ npm run build:standard
 npm run build:legacy-2008
 ```
 
-Los ZIP se generan en `dist/v16.0/`.
+Los ZIP se generan en `dist/v16.2/`.

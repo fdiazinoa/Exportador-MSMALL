@@ -7,13 +7,13 @@ const projectRoot = path.resolve(__dirname, '..');
 const editionName = process.argv[2];
 const definitions = {
     standard: {
-        artifact: 'ExportadorMSMall-V16.0-Standard-win-x64',
+        artifact: 'ExportadorMSMall-V16.2-Standard-win-x64',
         target: 'node18-win-x64',
         readme: 'README_STANDARD.txt',
         minimumWindows: 'Windows Server 2016 x64',
     },
     'legacy-2008': {
-        artifact: 'ExportadorMSMall-V16.0-Legacy-2008-win-x64',
+        artifact: 'ExportadorMSMall-V16.2-Legacy-2008-win-x64',
         target: 'node10-win-x64',
         readme: 'README_LEGACY_2008.txt',
         minimumWindows: 'Windows Server 2008 R2 x64 (Server 2008 requiere validacion de laboratorio)',
@@ -51,7 +51,7 @@ function prepareLegacyStage() {
 function writeBuildInfo(packageDir) {
     fs.writeFileSync(path.join(packageDir, 'build-info.json'), JSON.stringify({
         product: 'Exportador MSMall',
-        version: '16.0.0',
+        version: '16.2.0',
         edition: editionName,
         target: definition.target,
         minimumWindows: definition.minimumWindows,
@@ -73,7 +73,7 @@ function createZip(sourceDir, zipPath) {
 }
 
 async function main() {
-    const distRoot = path.join(projectRoot, 'dist', 'v16.0');
+    const distRoot = path.join(projectRoot, 'dist', 'v16.2');
     const packageDir = path.join(distRoot, definition.artifact);
     const executable = path.join(packageDir, 'exportador-msmall-node.exe');
     fs.rmSync(packageDir, { recursive: true, force: true });

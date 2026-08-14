@@ -1,4 +1,4 @@
-Exportador MSMall V16.0 Standard
+Exportador MSMall V16.2 Standard
 
 Destino recomendado:
 - Windows Server 2016 o superior, x64.

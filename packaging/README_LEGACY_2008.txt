@@ -1,4 +1,4 @@
-Exportador MSMall V16.0 Legacy-2008
+Exportador MSMall V16.2 Legacy-2008
 
 Destino de compatibilidad:
 - Windows Server 2008 R2 x64 o superior.
