@@ -58,8 +58,14 @@ function uniqueKey(collection, baseName) {
 }
 
 function errorMessage(error) {
-  return error.response?.data?.error || error.message || 'Error inesperado'
+  if (error.response?.data?.error) return error.response.data.error
+  if (error.message === 'Network Error') {
+    return 'La API local del Exportador no está respondiendo. Verifique que el servicio Windows esté iniciado y que el puerto 3000 esté disponible.'
+  }
+  return error.message || 'Error inesperado'
 }
+
+const wait = milliseconds => new Promise(resolve => window.setTimeout(resolve, milliseconds))
 
 function formatExecutionTime(value) {
   if (!value) return 'Nunca'
@@ -153,6 +159,31 @@ function App() {
     try {
       const response = await axios.post(`${API_URL}/api/service-mode/${action}`)
       setServiceModeStatus(response.data.status)
+      if (action === 'install' && response.data.handoff) {
+        notify('success', 'Servicio instalado', 'Realizando el traspaso al servicio Windows…')
+        let recovered = false
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          await wait(1000)
+          try {
+            const healthResponse = await axios.get(`${API_URL}/api/health`, { timeout: 1500 })
+            if (healthResponse.data?.runtimeMode === 'service') {
+              recovered = true
+              setHealth(healthResponse.data)
+              break
+            }
+          } catch {
+            // La interrupción temporal es esperada mientras se libera el puerto 3000.
+          }
+        }
+
+        if (recovered) {
+          await refreshServiceModeStatus()
+          notify('success', 'Servicio operativo', 'El Exportador ya está ejecutándose en segundo plano.')
+        } else {
+          notify('error', 'El servicio no respondió', 'Revise logs/service-handoff.log y ExportadorMSMallService.wrapper.log.')
+        }
+        return
+      }
       const labels = {
         install: 'Servicio instalado',
         uninstall: 'Servicio eliminado',

@@ -10,6 +10,10 @@ function isWindows() {
     return process.platform === 'win32';
 }
 
+function isRunningAsService() {
+    return process.env.EXPORTADOR_RUN_MODE === 'service';
+}
+
 function getServicePaths() {
     return {
         installScript: resolveRuntimePath('install-startup-task.ps1'),
@@ -47,6 +51,7 @@ function buildStatus(patch) {
         mechanism: MECHANISM,
         serviceName: SERVICE_NAME,
         platform: process.platform,
+        runtimeMode: isRunningAsService() ? 'service' : 'interactive',
     }, patch || {});
 }
 
@@ -117,7 +122,7 @@ async function getStatus() {
     }
 }
 
-async function runPowerShellScript(scriptPath) {
+async function runPowerShellScript(scriptPath, extraArgs) {
     await execFileAsync('powershell.exe', [
         '-NoProfile',
         '-ExecutionPolicy',
@@ -126,6 +131,7 @@ async function runPowerShellScript(scriptPath) {
         scriptPath,
         '-ServiceName',
         SERVICE_NAME,
+        ...(extraArgs || []),
     ], 180000);
 }
 
@@ -144,10 +150,17 @@ async function install() {
         throw new Error(`Faltan archivos para instalar el servicio. Deben existir ${WRAPPER_EXE}, exportador-msmall-node.exe y los scripts PowerShell.`);
     }
 
-    await runPowerShellScript(paths.installScript);
+    const handoff = !isRunningAsService();
+    await runPowerShellScript(paths.installScript, handoff ? ['-HandoffProcessId', String(process.pid)] : []);
     const status = await getStatus();
     if (!status.installed) throw new Error(status.message || 'El servicio Windows no quedó instalado.');
-    return { message: 'Servicio Windows instalado e iniciado.', status };
+    return {
+        message: handoff
+            ? 'Servicio instalado. La aplicación hará el traspaso al servicio Windows y volverá a conectarse automáticamente.'
+            : 'Servicio Windows instalado e iniciado.',
+        handoff,
+        status,
+    };
 }
 
 async function uninstall() {
@@ -180,6 +193,7 @@ module.exports = {
     getServicePaths,
     hasRequiredFiles,
     parseScState,
+    isRunningAsService,
     getStatus,
     install,
     uninstall,

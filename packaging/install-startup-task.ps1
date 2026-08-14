@@ -1,5 +1,6 @@
 param(
-    [string]$ServiceName = "ExportadorMSMall"
+    [string]$ServiceName = "ExportadorMSMall",
+    [int]$HandoffProcessId = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +13,7 @@ if (-not $isAdmin) {
     Write-Host "Se requieren permisos de administrador. Solicitando elevacion UAC..."
     $quotedScript = '"' + $PSCommandPath + '"'
     $quotedServiceName = '"' + $ServiceName + '"'
-    $arguments = "-NoProfile -ExecutionPolicy Bypass -File $quotedScript -ServiceName $quotedServiceName"
+    $arguments = "-NoProfile -ExecutionPolicy Bypass -File $quotedScript -ServiceName $quotedServiceName -HandoffProcessId $HandoffProcessId"
     $process = Start-Process powershell.exe -ArgumentList $arguments -Verb RunAs -Wait -PassThru
     exit $process.ExitCode
 }
@@ -44,6 +45,7 @@ $xml = @"
   <description>Servicio de exportacion y sincronizacion MsMall.</description>
   <executable>$escapedAppExe</executable>
   <workingdirectory>$escapedRoot</workingdirectory>
+  <env name="EXPORTADOR_RUN_MODE" value="service" />
   <logpath>$escapedLogsDir</logpath>
   <log mode="roll-by-size">
     <sizeThreshold>10485760</sizeThreshold>
@@ -69,11 +71,22 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "El servicio Windows '$ServiceName' ya esta instalado."
 }
 
-Write-Host "Iniciando servicio Windows '$ServiceName'..."
-& $serviceExe start
-if ($LASTEXITCODE -ne 0) {
-    throw "El inicio del servicio fallo con codigo $LASTEXITCODE."
-}
+if ($HandoffProcessId -gt 0) {
+    $handoffScript = Join-Path $root "start-service-after-exit.ps1"
+    if (-not (Test-Path $handoffScript)) {
+        throw "No se encontro el script de traspaso: $handoffScript"
+    }
 
-Start-Sleep -Seconds 2
-Write-Host "Servicio instalado e iniciado. Puede cerrar la ventana del Exportador."
+    $handoffArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$handoffScript`" -ParentProcessId $HandoffProcessId -ServiceName `"$ServiceName`""
+    Start-Process powershell.exe -ArgumentList $handoffArgs -WindowStyle Hidden | Out-Null
+    Write-Host "Servicio instalado. Se iniciara cuando cierre la instancia interactiva."
+} else {
+    Write-Host "Iniciando servicio Windows '$ServiceName'..."
+    & $serviceExe start
+    if ($LASTEXITCODE -ne 0) {
+        throw "El inicio del servicio fallo con codigo $LASTEXITCODE."
+    }
+
+    Start-Sleep -Seconds 2
+    Write-Host "Servicio instalado e iniciado. Puede cerrar la ventana del Exportador."
+}
