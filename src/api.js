@@ -5,6 +5,7 @@ const configLoader = require('./configLoader');
 const dbFactory = require('./dbFactory');
 const ftpUploader = require('./ftpUploader'); // We might need to adjust ftpUploader to support a test method
 const webServiceUploader = require('./webServiceUploader');
+const windowsServiceManager = require('./windowsServiceManager');
 const logger = require('./logger');
 const jobExecutor = require('./jobExecutor');
 const packageInfo = require('../package.json');
@@ -12,6 +13,15 @@ const buildInfo = require('./buildInfo');
 const { readLog, resolveLogFile } = require('./logReader');
 
 const router = express.Router();
+
+function requireLocalServiceControl(req, res, next) {
+    const address = String(req.socket && req.socket.remoteAddress ? req.socket.remoteAddress : '');
+    const isLoopback = address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+    if (!isLoopback) {
+        return res.status(403).json({ error: 'La administración del servicio solo está disponible desde el servidor local.' });
+    }
+    return next();
+}
 
 function sanitizeConfigForClient(config) {
     const cloned = JSON.parse(JSON.stringify(config || {}));
@@ -56,6 +66,46 @@ router.get('/health', (req, res) => {
         edition: buildInfo.edition,
         jobs: jobExecutor.status(),
     });
+});
+
+router.get('/service-mode/status', async (req, res) => {
+    try {
+        res.json(await windowsServiceManager.getStatus());
+    } catch (error) {
+        logger.error(`Error getting service mode status: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/service-mode/install', requireLocalServiceControl, async (req, res) => {
+    try {
+        res.json(await windowsServiceManager.install());
+    } catch (error) {
+        logger.error(`Error installing Windows service: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/service-mode/uninstall', requireLocalServiceControl, async (req, res) => {
+    try {
+        res.json(await windowsServiceManager.uninstall());
+    } catch (error) {
+        logger.error(`Error uninstalling Windows service: ${error.message}`);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+router.post('/service-mode/:action', requireLocalServiceControl, async (req, res) => {
+    const action = String(req.params.action || '').toLowerCase();
+    if (!['start', 'stop', 'restart'].includes(action)) {
+        return res.status(404).json({ error: 'Service action not found' });
+    }
+    try {
+        return res.json(await windowsServiceManager.control(action));
+    } catch (error) {
+        logger.error(`Error controlling Windows service: ${error.message}`);
+        return res.status(500).json({ error: error.message });
+    }
 });
 
 router.get('/logs/:type', (req, res) => {
