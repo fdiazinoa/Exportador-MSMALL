@@ -3,6 +3,9 @@
         "level": "info",
         "filename": "logs/app.log"
     },
+    "runtime": {
+        "maxConcurrentJobs": 2
+    },
     "databases": {
         "sqlserver_prod": {
             "provider": "sqlserver",
@@ -11,9 +14,14 @@
                 "password": "yourStrong(!)Password",
                 "server": "localhost",
                 "database": "TestDB",
+                "compatibilityProfile": "sqlserver2008",
+                "securityMode": "legacy_tls1",
+                "connectionTimeout": 30000,
+                "requestTimeout": 120000,
                 "options": {
                     "encrypt": true,
-                    "trustServerCertificate": true
+                    "trustServerCertificate": true,
+                    "cancelTimeout": 15000
                 }
             }
         },
@@ -35,30 +43,7 @@
             "secure": false
         }
     },
-    "webServices": {
-        "msmall_local": {
-            "baseUrl": "http://127.0.0.1:8000",
-            "clientId": "msa_xxx",
-            "clientSecret": "replace-me",
-            "mallId": "00000000-0000-0000-0000-000000000001",
-            "localId": "00000000-0000-0000-0000-000000000010",
-            "configId": "00000000-0000-0000-0000-000000000010",
-            "syncPath": "/api/v1/exporter/sync/ingest",
-            "manualExecutePath": "/api/v1/remote/execute-manual/exporter",
-            "auth": {
-                "tokenPath": "/auth/token",
-                "refreshPath": "/auth/refresh"
-            },
-            "mode": "sync_rows",
-            "chunkSize": 500,
-            "timeoutMs": 30000,
-            "retry": {
-                "maxAttempts": 3,
-                "baseDelayMs": 1000,
-                "maxDelayMs": 30000
-            }
-        }
-    },
+    "webServices": {},
     "jobs": [
         {
             "name": "DailySales",
@@ -67,22 +52,6 @@
             "format": "csv",
             "destination": "ftp_main",
             "mappingFile": "mappings/sales_map.json"
-        },
-        {
-            "name": "DailySalesToMsMall",
-            "sourceConnection": "sqlserver_prod",
-            "query": "SELECT * FROM Sales WHERE Date >= DATEADD(day, -1, GETDATE())",
-            "format": "json",
-            "destinationType": "webservice",
-            "destination": "msmall_local",
-            "mapping": {
-                "StoreId": "local_codigo",
-                "InvoiceNo": "factura_numero",
-                "SaleDate": "fecha_venta",
-                "GrossTotal": "total_bruto",
-                "NetTotal": "total_neto",
-                "TaxTotal": "total_impuestos"
-            }
         },
         {
             "name": "PushTicketsHiOffice",

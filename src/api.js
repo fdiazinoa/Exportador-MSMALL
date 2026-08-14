@@ -1,44 +1,41 @@
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
-const path = require('path');
 const configLoader = require('./configLoader');
 const dbFactory = require('./dbFactory');
 const ftpUploader = require('./ftpUploader'); // We might need to adjust ftpUploader to support a test method
 const webServiceUploader = require('./webServiceUploader');
 const logger = require('./logger');
+const jobExecutor = require('./jobExecutor');
+const packageInfo = require('../package.json');
+const buildInfo = require('./buildInfo');
+const { readLog, resolveLogFile } = require('./logReader');
 
 const router = express.Router();
 
 function sanitizeConfigForClient(config) {
-    if (!config || typeof config !== 'object') return config;
-    const cloned = JSON.parse(JSON.stringify(config));
-    if (cloned.webServices && typeof cloned.webServices === 'object') {
-        for (const ws of Object.values(cloned.webServices)) {
-            if (ws && typeof ws === 'object' && ws.authState) {
-                const authState = { ...ws.authState };
-                if (authState.accessToken) authState.accessToken = '[REDACTED]';
-                if (authState.refreshToken) authState.refreshToken = '[REDACTED]';
-                ws.authState = authState;
-            }
-        }
-    }
+    const cloned = JSON.parse(JSON.stringify(config || {}));
+    const webServices = cloned.webServices || {};
+    Object.keys(webServices).forEach(key => {
+        const state = webServices[key].authState;
+        if (!state) return;
+        if (state.accessToken) state.accessToken = '[REDACTED]';
+        if (state.refreshToken) state.refreshToken = '[REDACTED]';
+    });
     return cloned;
 }
 
-function preserveRuntimeAuthState(incomingConfig, currentConfig) {
+function preserveAuthState(incomingConfig, currentConfig) {
     const nextConfig = JSON.parse(JSON.stringify(incomingConfig || {}));
-    const currentWebServices = currentConfig?.webServices || {};
-    const nextWebServices = nextConfig.webServices || {};
-
-    for (const [key, currentWs] of Object.entries(currentWebServices)) {
-        if (!nextWebServices[key]) continue;
-        if (currentWs?.authState) {
-            nextWebServices[key].authState = currentWs.authState;
-        }
-    }
-
-    nextConfig.webServices = nextWebServices;
+    nextConfig.webServices = nextConfig.webServices || {};
+    const currentWebServices = currentConfig.webServices || {};
+    Object.keys(nextConfig.webServices).forEach(key => {
+        const next = nextConfig.webServices[key];
+        const current = currentWebServices[key];
+        if (!current || !current.authState) return;
+        const changed = ['baseUrl', 'clientId', 'clientSecret'].some(field => String(next[field] || '') !== String(current[field] || ''));
+        if (!changed) next.authState = current.authState;
+    });
     return nextConfig;
 }
 
@@ -52,11 +49,45 @@ router.get('/config', (req, res) => {
     }
 });
 
+router.get('/health', (req, res) => {
+    res.json({
+        ok: true,
+        version: packageInfo.version,
+        edition: buildInfo.edition,
+        jobs: jobExecutor.status(),
+    });
+});
+
+router.get('/logs/:type', (req, res) => {
+    try {
+        const result = readLog(req.params.type, req.query);
+        res.json({
+            type: result.type,
+            fileName: result.fileName,
+            exists: result.exists,
+            lines: result.lines,
+            entries: result.entries,
+        });
+    } catch (error) {
+        res.status(error.code === 'INVALID_LOG_TYPE' ? 400 : 500).json({ error: error.message });
+    }
+});
+
+router.get('/logs/:type/download', (req, res) => {
+    try {
+        const target = resolveLogFile(req.params.type);
+        if (!fs.existsSync(target.filePath)) return res.status(404).json({ error: 'El archivo de log todavía no existe.' });
+        return res.download(target.filePath, target.fileName);
+    } catch (error) {
+        return res.status(error.code === 'INVALID_LOG_TYPE' ? 400 : 500).json({ error: error.message });
+    }
+});
+
 // Save Config
 router.post('/config', (req, res) => {
     try {
         const currentConfig = configLoader.load();
-        const newConfig = preserveRuntimeAuthState(req.body, currentConfig);
+        const newConfig = preserveAuthState(req.body, currentConfig);
         // Basic validation could go here
 
         // Write to file
@@ -131,22 +162,19 @@ router.post('/test/ftp', async (req, res) => {
     }
 });
 
-// Test Webservice Connection (MsMall token auth + optional sync probe)
+// Test MsMall Service Account authentication and resolve Mall/Local identity.
 router.post('/test/webservice', async (req, res) => {
     const { serverName } = req.body;
     const config = configLoader.load();
-    const wsConfig = config.webServices?.[serverName];
-
-    if (!wsConfig) {
+    if (!config.webServices || !config.webServices[serverName]) {
         return res.status(404).json({ error: 'Webservice config not found' });
     }
-
     try {
         const result = await webServiceUploader.testConnection(serverName);
-        res.json({ message: 'Connection successful', ...result });
+        return res.json({ message: 'Conexión con MsMall validada.', ...result });
     } catch (error) {
         logger.error(`Error testing webservice '${serverName}': ${error.message}`);
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message });
     }
 });
 
@@ -196,11 +224,10 @@ router.post('/jobs/:name/run', async (req, res) => {
     const jobName = req.params.name;
 
     try {
-        const { runJob } = require('./jobRunner');
-        const result = await runJob(jobName);
+        const result = await jobExecutor.execute(jobName);
         res.json(result);
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(error.code === 'JOB_ALREADY_RUNNING' ? 409 : 500).json({ error: error.message, code: error.code });
     }
 });
 
