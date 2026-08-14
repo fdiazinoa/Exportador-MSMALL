@@ -1,0 +1,29 @@
+{
+  "name": "exportador-msmall-v16-legacy-2008",
+  "version": "16.2.0",
+  "private": true,
+  "main": "index.js",
+  "bin": "index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "basic-ftp": "5.3.1",
+    "cors": "2.8.5",
+    "express": "4.22.2",
+    "fast-csv": "4.3.6",
+    "mysql2": "3.23.3",
+    "node-cron": "3.0.1",
+    "pg": "8.11.5",
+    "ssh2-sftp-client": "7.2.3",
+    "tedious": "3.0.1",
+    "winston": "3.8.2"
+  },
+  "overrides": {
+    "qs": "6.15.3",
+    "@dabh/diagnostics": "2.0.2"
+  },
+  "pkg": {
+    "scripts": ["src/**/*.js"],
+    "assets": ["frontend/dist/**/*"],
+    "targets": ["node10-win-x64"]
+  }
+}

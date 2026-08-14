@@ -1,11 +1,12 @@
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
+const { resolveRuntimePath } = require('./runtimePaths');
 
 // Ensure log directory exists
-const logDir = 'logs';
+const logDir = resolveRuntimePath('logs');
 if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir);
+    fs.mkdirSync(logDir, { recursive: true });
 }
 
 const logger = winston.createLogger({
