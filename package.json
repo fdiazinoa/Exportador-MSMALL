@@ -18,9 +18,7 @@
   "scripts": {
     "test": "node test/run.js",
     "build:frontend": "npm --prefix frontend run build",
-    "build:standard": "npm run build:frontend && node scripts/build-edition.js standard",
-    "build:legacy-2008": "npm run build:frontend && node scripts/build-edition.js legacy-2008",
-    "build": "npm run build:standard && npm run build:legacy-2008"
+    "release:pack": "node scripts/release-pack.js"
   },
   "keywords": [],
   "author": "",

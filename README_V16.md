@@ -41,14 +41,17 @@ servicio real de Windows mediante WinSW. El servicio inicia automaticamente con
 Windows y mantiene los jobs activos aunque se cierre la ventana del Exportador.
 La instalación y eliminación solicitan permisos de administrador.
 
-## Compilacion
+## Generación oficial de Packs
+
+El protocolo obligatorio está documentado en `RELEASE_PROTOCOL.md`. Los Packs
+solo se generan desde `develop`, usando la versión de `package.json` como fuente
+única y el siguiente comando desde la raíz del repositorio:
 
 ```bash
 npm ci
 npm --prefix frontend ci
-npm test
-npm run build:standard
-npm run build:legacy-2008
+npm run release:pack
 ```
 
-Los ZIP se generan en `dist/v16.3/`.
+Las dos ediciones y su manifiesto SHA-256 se generan juntas en
+`release-packs/vMAJOR.MINOR/`.
