@@ -398,6 +398,17 @@ function App() {
   }, null)
   const serviceModeInstalled = Boolean(serviceModeStatus?.installed)
   const serviceModeSupported = Boolean(serviceModeStatus?.supported)
+  const serviceMigrationRequired = Boolean(serviceModeStatus?.migrationRequired)
+  const serviceRepairRequired = Boolean(serviceModeStatus?.repairRequired)
+  const serviceModeCurrent = serviceModeInstalled && Boolean(serviceModeStatus?.currentPack)
+  const servicePrimaryAction = serviceModeCurrent ? 'uninstall' : 'install'
+  const servicePrimaryLabel = serviceMigrationRequired
+    ? 'Actualizar servicio'
+    : serviceRepairRequired
+      ? 'Reparar servicio'
+      : serviceModeCurrent
+        ? 'Quitar servicio'
+        : 'Instalar como servicio'
   const serviceStateLabels = {
     running: 'En ejecución',
     stopped: 'Detenido',
@@ -410,7 +421,11 @@ function App() {
     ? 'Consultando'
     : !serviceModeSupported
       ? 'No disponible'
-      : serviceStateLabels[serviceModeStatus.state] || (serviceModeInstalled ? 'Instalado' : 'No instalado')
+      : serviceMigrationRequired
+        ? 'Requiere actualización'
+        : serviceRepairRequired
+          ? 'Requiere reparación'
+          : serviceStateLabels[serviceModeStatus.state] || (serviceModeInstalled ? 'Instalado' : 'No instalado')
 
   return (
     <ConfigLayout onSave={() => saveConfig()} saving={saving} saveDisabled={!config}>
@@ -572,15 +587,15 @@ function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleServiceModeAction(serviceModeInstalled ? 'uninstall' : 'install')}
+                  onClick={() => handleServiceModeAction(servicePrimaryAction)}
                   disabled={serviceModeLoading || Boolean(serviceModeAction) || !serviceModeSupported}
                   className={cn(
                     'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-60',
-                    serviceModeInstalled ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700',
+                    serviceModeCurrent ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700',
                   )}
                 >
                   {serviceModeAction ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}
-                  {serviceModeInstalled ? 'Quitar servicio' : 'Instalar como servicio'}
+                  {servicePrimaryLabel}
                 </button>
               </>
             )}
@@ -588,7 +603,7 @@ function App() {
             <ConnectionCard
               name="ExportadorMSMall"
               typeLabel={serviceModeLabel}
-              tone={serviceModeInstalled ? 'emerald' : 'slate'}
+              tone={serviceMigrationRequired || serviceRepairRequired ? 'orange' : serviceModeCurrent ? 'emerald' : 'slate'}
               description={serviceModeStatus?.message || 'Consultando el estado del servicio Windows...'}
             >
               <div className="col-span-12 rounded-lg border border-gray-200 bg-gray-50 p-4 md:col-span-4">
@@ -604,7 +619,7 @@ function App() {
                 <p className="mt-2 text-sm font-semibold text-gray-950">Automático con Windows</p>
               </div>
 
-              {serviceModeInstalled ? (
+              {serviceModeCurrent ? (
                 <div className="col-span-12 flex flex-wrap gap-2">
                   <button type="button" onClick={() => handleServiceModeAction('start')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
                     <Play className="h-4 w-4" /> Iniciar
