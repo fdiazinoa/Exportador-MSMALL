@@ -118,6 +118,15 @@ test('Windows service manager parses English and Spanish service states', () => 
     assert.strictEqual(windowsServiceManager.MECHANISM, 'windows_service_winsw');
 });
 
+test('Windows service manager identifies the registered wrapper path', () => {
+    const english = 'BINARY_PATH_NAME   : "C:\\Exportador V16.4\\ExportadorMSMallService.exe"';
+    const spanish = 'NOMBRE_RUTA_BINARIO: C:\\ExportadorV16.5\\ExportadorMSMallService.exe';
+    assert.strictEqual(windowsServiceManager.parseScBinaryPath(english), 'C:\\Exportador V16.4\\ExportadorMSMallService.exe');
+    assert.strictEqual(windowsServiceManager.parseScBinaryPath(spanish), 'C:\\ExportadorV16.5\\ExportadorMSMallService.exe');
+    assert.strictEqual(windowsServiceManager.sameWindowsPath('C:\\PACK\\Service.exe', 'c:\\pack\\service.exe'), true);
+    assert.strictEqual(windowsServiceManager.sameWindowsPath('C:\\V16.4\\Service.exe', 'C:\\V16.5\\Service.exe'), false);
+});
+
 test('Windows service mode is reported as unavailable outside Windows', async () => {
     if (process.platform === 'win32') return;
     const status = await windowsServiceManager.getStatus();
@@ -139,6 +148,8 @@ test('Windows service assets are present and configured for automatic startup', 
     assert.strictEqual(installScript.includes('<startmode>Automatic</startmode>'), true);
     assert.strictEqual(installScript.includes('EXPORTADOR_RUN_MODE'), true);
     assert.strictEqual(installScript.includes('HandoffProcessId'), true);
+    assert.strictEqual(installScript.includes('Migrando servicio desde'), true);
+    assert.strictEqual(installScript.includes('sc.exe delete $ServiceName'), true);
     assert.strictEqual(handoffScript.includes('Get-Process -Id $ParentProcessId'), true);
     assert.strictEqual(handoffScript.includes('& $serviceExe stop'), true);
     assert.strictEqual(buildScript.includes("'ExportadorMSMallService.exe'"), true);
