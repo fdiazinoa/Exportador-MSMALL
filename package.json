@@ -1,6 +1,6 @@
 {
   "name": "exportador-msmall-node",
-  "version": "16.3.0",
+  "version": "16.4.0",
   "description": "Exportador MSMall V16 con ediciones Standard y Legacy-2008",
   "main": "index.js",
   "bin": "index.js",
