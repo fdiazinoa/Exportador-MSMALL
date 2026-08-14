@@ -2,23 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const archiver = require('archiver');
+const { loadReleaseConfig } = require('./release-config');
 
 const projectRoot = path.resolve(__dirname, '..');
 const editionName = process.argv[2];
-const definitions = {
-    standard: {
-        artifact: 'ExportadorMSMall-V16.3-Standard-win-x64',
-        target: 'node18-win-x64',
-        readme: 'README_STANDARD.txt',
-        minimumWindows: 'Windows Server 2016 x64',
-    },
-    'legacy-2008': {
-        artifact: 'ExportadorMSMall-V16.3-Legacy-2008-win-x64',
-        target: 'node10-win-x64',
-        readme: 'README_LEGACY_2008.txt',
-        minimumWindows: 'Windows Server 2008 R2 x64 (Server 2008 requiere validacion de laboratorio)',
-    },
-};
+const releaseConfig = loadReleaseConfig(projectRoot);
+const definitions = releaseConfig.editions;
 
 const definition = definitions[editionName];
 if (!definition) {
@@ -51,7 +40,7 @@ function prepareLegacyStage() {
 function writeBuildInfo(packageDir) {
     fs.writeFileSync(path.join(packageDir, 'build-info.json'), JSON.stringify({
         product: 'Exportador MSMall',
-        version: '16.3.0',
+        version: releaseConfig.version,
         edition: editionName,
         target: definition.target,
         minimumWindows: definition.minimumWindows,
@@ -73,7 +62,7 @@ function createZip(sourceDir, zipPath) {
 }
 
 async function main() {
-    const distRoot = path.join(projectRoot, 'dist', 'v16.3');
+    const distRoot = releaseConfig.outputRoot;
     const packageDir = path.join(distRoot, definition.artifact);
     const executable = path.join(packageDir, 'exportador-msmall-node.exe');
     fs.rmSync(packageDir, { recursive: true, force: true });

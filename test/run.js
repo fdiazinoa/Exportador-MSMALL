@@ -1,3 +1,5 @@
+process.env.NODE_ENV = 'test';
+
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -12,6 +14,7 @@ const { resolveDestinationTarget } = require('../src/destinationResolver');
 const configLoader = require('../src/configLoader');
 const webServiceAuth = require('../src/webServiceAuth');
 const windowsServiceManager = require('../src/windowsServiceManager');
+const { parseVersion, loadReleaseConfig } = require('../scripts/release-config');
 
 const tests = [];
 function test(name, fn) {
@@ -134,6 +137,17 @@ test('Windows service assets are present and configured for automatic startup', 
     );
     assert.strictEqual(installScript.includes('<startmode>Automatic</startmode>'), true);
     assert.strictEqual(buildScript.includes("'ExportadorMSMallService.exe'"), true);
+});
+
+test('Release protocol derives both editions and canonical path from package version', () => {
+    const parsed = parseVersion('16.3.0');
+    assert.deepStrictEqual(parsed, { full: '16.3.0', label: '16.3' });
+    const release = loadReleaseConfig(path.join(__dirname, '..'));
+    assert.strictEqual(release.version, '16.3.0');
+    assert.strictEqual(path.basename(release.outputRoot), 'v16.3');
+    assert.strictEqual(path.basename(path.dirname(release.outputRoot)), 'release-packs');
+    assert.strictEqual(release.editions.standard.artifact, 'ExportadorMSMall-V16.3-Standard-win-x64');
+    assert.strictEqual(release.editions['legacy-2008'].artifact, 'ExportadorMSMall-V16.3-Legacy-2008-win-x64');
 });
 
 test('MsMall Service Account test persists identity from exporter token', async () => {
