@@ -22,6 +22,7 @@ export default function ConnectionCard({
   onTest,
   onDelete,
   deleteTitle,
+  description = 'La clave se conserva para mantener compatibles los jobs existentes.',
   testing = false,
   status,
   notice,
@@ -35,9 +36,7 @@ export default function ConnectionCard({
       <div className="flex flex-col gap-4 border-b border-gray-100 pb-5 md:flex-row md:items-start md:justify-between">
         <div>
           <h3 className="text-lg font-semibold text-gray-950">{name}</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            La clave se conserva para mantener compatibles los jobs existentes.
-          </p>
+          <p className="mt-1 text-sm text-gray-500">{description}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

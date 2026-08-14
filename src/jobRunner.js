@@ -37,7 +37,11 @@ async function runJob(jobName) {
                 fs.writeFileSync(configLoader.configPath, JSON.stringify(config, null, 2));
             }
 
-            return { success: true, message: `HiOffice Push Job '${jobName}' executed successfully.` };
+            return {
+                success: true,
+                message: `HiOffice Push Job '${jobName}' executed successfully.`,
+                lastRun: job.lastRun,
+            };
         }
 
         // 2. Map
@@ -80,7 +84,12 @@ async function runJob(jobName) {
         }
 
         logger.info(`Job ${jobName} completed successfully.`);
-        return { success: true, message: `Job '${jobName}' executed successfully.`, destination: destination.type };
+        return {
+            success: true,
+            message: `Job '${jobName}' executed successfully.`,
+            destination: destination.type,
+            lastRun: job.lastRun,
+        };
 
     } catch (error) {
         logger.error(`Job ${jobName} failed: ${error.message}`);

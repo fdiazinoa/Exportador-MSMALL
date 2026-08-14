@@ -57,6 +57,16 @@ function errorMessage(error) {
   return error.response?.data?.error || error.message || 'Error inesperado'
 }
 
+function formatExecutionTime(value) {
+  if (!value) return 'Nunca'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Fecha no disponible'
+  return new Intl.DateTimeFormat('es-DO', {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  }).format(date)
+}
+
 function App() {
   const [config, setConfig] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -93,10 +103,14 @@ function App() {
   const fetchLogs = useCallback(async () => {
     setLogsLoading(true)
     try {
-      const response = await axios.get(`${API_URL}/api/logs/${logType}`, {
-        params: { lines: 500, level: logLevel, search: logSearch },
-      })
-      setLogs(response.data)
+      const [logsResponse, configResponse] = await Promise.all([
+        axios.get(`${API_URL}/api/logs/${logType}`, {
+          params: { lines: 500, level: logLevel, search: logSearch },
+        }),
+        axios.get(`${API_URL}/api/config`),
+      ])
+      setLogs(logsResponse.data)
+      setConfig(configResponse.data)
     } catch (error) {
       notify('error', 'No se pudieron cargar los logs', errorMessage(error))
     } finally {
@@ -272,6 +286,7 @@ function App() {
       const saved = await saveConfig({ silent: true })
       if (!saved) return
       const response = await axios.post(`${API_URL}/api/jobs/${encodeURIComponent(job.name)}/run`)
+      if (response.data.lastRun) updateJob(index, 'lastRun', response.data.lastRun)
       notify('success', 'Job ejecutado', response.data.message || job.name)
     } catch (error) {
       notify('error', 'Falló la ejecución', errorMessage(error))
@@ -297,6 +312,12 @@ function App() {
   const ftpServers = Object.entries(config.ftpServers || {})
   const webServices = Object.entries(config.webServices || {})
   const jobs = config.jobs || []
+  const latestExecutedJob = jobs.reduce((latest, job) => {
+    const timestamp = new Date(job.lastRun || '').getTime()
+    if (Number.isNaN(timestamp)) return latest
+    if (!latest || timestamp > latest.timestamp) return { job, timestamp }
+    return latest
+  }, null)
 
   return (
     <ConfigLayout onSave={() => saveConfig()} saving={saving} saveDisabled={!config}>
@@ -306,7 +327,7 @@ function App() {
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-blue-50 p-2.5 text-blue-700"><Server className="h-5 w-5" /></div>
           <div>
-            <p className="text-sm font-semibold text-gray-950">Exportador V{health?.version || '16.0'}</p>
+            <p className="text-sm font-semibold text-gray-950">Exportador V{health?.version || '16.2'}</p>
             <p className="text-xs text-gray-500">Edición {health?.edition || 'Standard'} · {health?.ok ? 'Servicio disponible' : 'Estado no disponible'}</p>
           </div>
         </div>
@@ -522,7 +543,15 @@ function App() {
               const destinationType = job.destinationType || (ftpServers.some(([name]) => name === job.destination) ? 'ftp' : webServices.some(([name]) => name === job.destination) ? 'webservice' : 'local')
               const destinationOptions = destinationType === 'webservice' ? webServices : ftpServers
               return (
-              <ConnectionCard key={`${job.name}-${index}`} name={job.name || `Job ${index + 1}`} typeLabel={job.type || job.format || 'job'} tone="violet" onDelete={() => removeJob(index)} deleteTitle="Eliminar Job">
+              <ConnectionCard
+                key={`${job.name}-${index}`}
+                name={job.name || `Job ${index + 1}`}
+                typeLabel={job.type || job.format || 'job'}
+                tone="violet"
+                description={`Última ejecución completada: ${formatExecutionTime(job.lastRun)}`}
+                onDelete={() => removeJob(index)}
+                deleteTitle="Eliminar Job"
+              >
                 <FormField label="Nombre" className="md:col-span-6">
                   <input className={inputBaseClassName} value={job.name || ''} onChange={event => updateJob(index, 'name', event.target.value)} />
                 </FormField>
@@ -607,6 +636,17 @@ function App() {
                 <Download className="h-4 w-4" /> Descargar
               </a>
             </div>
+          </div>
+          <div className="mt-5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">Última ejecución completada</p>
+            {latestExecutedJob ? (
+              <div className="mt-1 flex flex-col gap-1 text-sm text-blue-950 sm:flex-row sm:items-center sm:justify-between">
+                <span className="font-semibold">{latestExecutedJob.job.name || 'Job sin nombre'}</span>
+                <time dateTime={latestExecutedJob.job.lastRun}>{formatExecutionTime(latestExecutedJob.job.lastRun)}</time>
+              </div>
+            ) : (
+              <p className="mt-1 text-sm text-blue-900">No hay ejecuciones completadas registradas.</p>
+            )}
           </div>
           <div className="my-5 grid gap-3 md:grid-cols-12">
             <FormField label="Archivo" className="md:col-span-3">
