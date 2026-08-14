@@ -34,6 +34,13 @@ resuelven automaticamente desde el token exporter al probar la conexion.
 Los modos soportados son `sync_rows` (recomendado) y `manual_execute`. El segundo
 requiere ademas el `Config ID` asignado en MsMall.
 
+## Modo Servicio
+
+El TAB `Servicios` permite instalar y administrar `ExportadorMSMall` como un
+servicio real de Windows mediante WinSW. El servicio inicia automaticamente con
+Windows y mantiene los jobs activos aunque se cierre la ventana del Exportador.
+La instalación y eliminación solicitan permisos de administrador.
+
 ## Compilacion
 
 ```bash
@@ -44,4 +51,4 @@ npm run build:standard
 npm run build:legacy-2008
 ```
 
-Los ZIP se generan en `dist/v16.2/`.
+Los ZIP se generan en `dist/v16.3/`.
