@@ -88,7 +88,7 @@ async function main() {
     copyTree(path.join(projectRoot, 'frontend', 'dist'), path.join(packageDir, 'frontend', 'dist'));
     fs.copyFileSync(path.join(projectRoot, 'config', 'default.json'), path.join(packageDir, 'config', 'default.json'));
     fs.copyFileSync(path.join(projectRoot, 'packaging', definition.readme), path.join(packageDir, 'README.txt'));
-    for (const file of ['run-exportador-silent.bat', 'install-startup-task.ps1', 'remove-startup-task.ps1']) {
+    for (const file of ['run-exportador-silent.bat', 'install-startup-task.ps1', 'remove-startup-task.ps1', 'start-service-after-exit.ps1']) {
         fs.copyFileSync(path.join(projectRoot, 'packaging', file), path.join(packageDir, file));
     }
     fs.copyFileSync(

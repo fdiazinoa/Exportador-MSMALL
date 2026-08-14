@@ -64,6 +64,7 @@ router.get('/health', (req, res) => {
         ok: true,
         version: packageInfo.version,
         edition: buildInfo.edition,
+        runtimeMode: windowsServiceManager.isRunningAsService() ? 'service' : 'interactive',
         jobs: jobExecutor.status(),
     });
 });
@@ -79,7 +80,12 @@ router.get('/service-mode/status', async (req, res) => {
 
 router.post('/service-mode/install', requireLocalServiceControl, async (req, res) => {
     try {
-        res.json(await windowsServiceManager.install());
+        const result = await windowsServiceManager.install();
+        res.json(result);
+        if (result.handoff) {
+            logger.info('Service handoff scheduled. Closing the interactive process to release dashboard port 3000.');
+            setTimeout(() => process.exit(0), 1200);
+        }
     } catch (error) {
         logger.error(`Error installing Windows service: ${error.message}`);
         res.status(500).json({ error: error.message });

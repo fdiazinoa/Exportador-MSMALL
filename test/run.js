@@ -126,6 +126,7 @@ test('Windows service mode is reported as unavailable outside Windows', async ()
 test('Windows service assets are present and configured for automatic startup', () => {
     const wrapperPath = path.join(__dirname, '..', 'packaging', 'ExportadorMSMallService.exe');
     const installScript = fs.readFileSync(path.join(__dirname, '..', 'packaging', 'install-startup-task.ps1'), 'utf8');
+    const handoffScript = fs.readFileSync(path.join(__dirname, '..', 'packaging', 'start-service-after-exit.ps1'), 'utf8');
     const buildScript = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'build-edition.js'), 'utf8');
     assert.strictEqual(fs.existsSync(wrapperPath), true);
     assert.strictEqual(
@@ -133,7 +134,18 @@ test('Windows service assets are present and configured for automatic startup', 
         '5859b114d96800a2b98ef9d19eaa573a786a422dad324547ef25be181389df01',
     );
     assert.strictEqual(installScript.includes('<startmode>Automatic</startmode>'), true);
+    assert.strictEqual(installScript.includes('EXPORTADOR_RUN_MODE'), true);
+    assert.strictEqual(installScript.includes('HandoffProcessId'), true);
+    assert.strictEqual(handoffScript.includes('Get-Process -Id $ParentProcessId'), true);
+    assert.strictEqual(handoffScript.includes('& $serviceExe stop'), true);
     assert.strictEqual(buildScript.includes("'ExportadorMSMallService.exe'"), true);
+    assert.strictEqual(buildScript.includes("'start-service-after-exit.ps1'"), true);
+});
+
+test('Dashboard startup reports port conflicts in the application log', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
+    assert.strictEqual(source.includes("server.on('error'"), true);
+    assert.strictEqual(source.includes('Dashboard API could not listen on port'), true);
 });
 
 test('MsMall Service Account test persists identity from exporter token', async () => {

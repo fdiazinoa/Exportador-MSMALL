@@ -47,8 +47,18 @@ async function startServer() {
         logger.warn('Frontend build not found. Run "npm run build" in frontend directory.');
     }
 
-    app.listen(port, () => {
-        logger.info(`Configuration Dashboard running at http://localhost:${port}`);
+    return new Promise((resolve, reject) => {
+        let started = false;
+        const server = app.listen(port);
+        server.once('listening', () => {
+            started = true;
+            logger.info(`Configuration Dashboard running at http://localhost:${port}`);
+            resolve(server);
+        });
+        server.on('error', error => {
+            logger.error(`Dashboard API could not listen on port ${port}: ${error.code || error.message}. runtimeMode=${process.env.EXPORTADOR_RUN_MODE || 'interactive'}`);
+            if (!started) reject(error);
+        });
     });
 }
 
@@ -58,7 +68,7 @@ async function main() {
     logger.info(`Exportador MSMall V${packageInfo.version} started. edition=${buildInfo.edition}`);
 
     // Start the Web Server
-    startServer();
+    await startServer();
 
     const args = process.argv.slice(2);
     const runOnce = args.includes('--run-once');
