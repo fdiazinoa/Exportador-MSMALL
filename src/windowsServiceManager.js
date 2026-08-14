@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const { execFile } = require('child_process');
 const { resolveRuntimePath } = require('./runtimePaths');
 
@@ -69,6 +70,25 @@ function parseScState(stdout) {
     return String(match && match[1] ? match[1] : 'unknown').toLowerCase();
 }
 
+function parseScBinaryPath(stdout) {
+    const line = String(stdout || '')
+        .split(/\r?\n/)
+        .find(value => value.toLowerCase().includes(WRAPPER_EXE.toLowerCase()));
+    if (!line) return '';
+
+    const separator = line.indexOf(':');
+    const value = (separator >= 0 ? line.slice(separator + 1) : line).trim();
+    const quoted = value.match(/^"([^"]+)"/);
+    if (quoted) return quoted[1];
+    const executable = value.match(/^(.+?\.exe)(?:\s|$)/i);
+    return executable ? executable[1].trim() : value;
+}
+
+function sameWindowsPath(left, right) {
+    if (!left || !right) return false;
+    return path.win32.normalize(left).toLowerCase() === path.win32.normalize(right).toLowerCase();
+}
+
 function isServiceMissing(error) {
     const output = `${String(error.stdout || '')}\n${String(error.stderr || '')}\n${String(error.message || '')}`.toLowerCase();
     return output.includes('1060')
@@ -80,8 +100,13 @@ function isServiceMissing(error) {
 
 async function queryServiceState() {
     try {
-        const result = await execFileAsync('sc.exe', ['query', SERVICE_NAME]);
-        return { installed: true, state: parseScState(result.stdout) };
+        const stateResult = await execFileAsync('sc.exe', ['query', SERVICE_NAME]);
+        const configResult = await execFileAsync('sc.exe', ['qc', SERVICE_NAME]);
+        return {
+            installed: true,
+            state: parseScState(stateResult.stdout),
+            registeredPath: parseScBinaryPath(configResult.stdout),
+        };
     } catch (error) {
         if (isServiceMissing(error)) return { installed: false, state: 'not_installed' };
         throw error;
@@ -105,13 +130,28 @@ async function getStatus() {
 
     try {
         const service = await queryServiceState();
+        const descriptorPresent = fs.existsSync(paths.serviceXml);
+        const pathMatches = sameWindowsPath(service.registeredPath, paths.serviceWrapper);
+        const currentPack = service.installed && pathMatches && descriptorPresent;
+        const migrationRequired = service.installed && !pathMatches;
+        const repairRequired = service.installed && pathMatches && !descriptorPresent;
+        let message = 'Servicio Windows no instalado.';
+        if (migrationRequired) {
+            message = `Servicio registrado desde otra carpeta (${service.registeredPath || 'ruta no disponible'}). Debe actualizarse a este Pack.`;
+        } else if (repairRequired) {
+            message = `Falta ${path.basename(paths.serviceXml)} en este Pack. Debe repararse la instalación.`;
+        } else if (service.installed) {
+            message = `Servicio Windows ${SERVICE_NAME} instalado desde este Pack (${service.state}).`;
+        }
         return buildStatus({
             supported: true,
             installed: service.installed,
             state: service.state,
-            message: service.installed
-                ? `Servicio Windows ${SERVICE_NAME} instalado (${service.state}).`
-                : 'Servicio Windows no instalado.',
+            registeredPath: service.registeredPath || '',
+            currentPack,
+            migrationRequired,
+            repairRequired,
+            message,
         });
     } catch (error) {
         return buildStatus({
@@ -180,6 +220,12 @@ async function control(action) {
         throw new Error(`Acción de servicio no soportada: ${action}`);
     }
 
+    const currentStatus = await getStatus();
+    if (!currentStatus.installed) throw new Error('El servicio Windows no está instalado.');
+    if (!currentStatus.currentPack) {
+        throw new Error('El servicio pertenece a otra carpeta o no tiene descriptor local. Use Actualizar servicio antes de administrarlo.');
+    }
+
     await runWrapperCommand(action);
     return {
         message: `Acción '${action}' ejecutada sobre el servicio Windows.`,
@@ -193,6 +239,8 @@ module.exports = {
     getServicePaths,
     hasRequiredFiles,
     parseScState,
+    parseScBinaryPath,
+    sameWindowsPath,
     isRunningAsService,
     getStatus,
     install,

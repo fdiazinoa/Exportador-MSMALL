@@ -18,24 +18,20 @@ if (-not $isAdmin) {
 }
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$serviceExe = Join-Path $root "ExportadorMSMallService.exe"
 $serviceXml = Join-Path $root "ExportadorMSMallService.xml"
 
-if (-not (Test-Path $serviceExe)) {
-    throw "No se encontro el wrapper de servicio: $serviceExe"
-}
-
-& sc.exe query $ServiceName 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) {
+$existingService = Get-WmiObject Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+if (-not $existingService) {
     Write-Host "El servicio Windows '$ServiceName' no esta instalado."
     exit 0
 }
 
 Write-Host "Deteniendo servicio Windows '$ServiceName'..."
-& $serviceExe stop
+Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
 
 Write-Host "Eliminando servicio Windows '$ServiceName'..."
-& $serviceExe uninstall
+& sc.exe delete $ServiceName | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw "La eliminacion del servicio fallo con codigo $LASTEXITCODE."
 }

@@ -60,8 +60,42 @@ $xml = @"
 
 Set-Content -Path $serviceXml -Value $xml -Encoding UTF8
 
-& sc.exe query $ServiceName 2>$null | Out-Null
-if ($LASTEXITCODE -ne 0) {
+$existingService = Get-WmiObject Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+if ($existingService) {
+    $registeredPath = [Environment]::ExpandEnvironmentVariables([string]$existingService.PathName).Trim()
+    if ($registeredPath.StartsWith('"')) {
+        $registeredPath = $registeredPath.Substring(1).Split('"')[0]
+    } else {
+        $exePosition = $registeredPath.ToLowerInvariant().IndexOf('.exe')
+        if ($exePosition -ge 0) {
+            $registeredPath = $registeredPath.Substring(0, $exePosition + 4)
+        }
+    }
+
+    $registeredFullPath = [IO.Path]::GetFullPath($registeredPath)
+    $currentFullPath = [IO.Path]::GetFullPath($serviceExe)
+    if (-not $registeredFullPath.Equals($currentFullPath, [StringComparison]::OrdinalIgnoreCase)) {
+        Write-Host "Migrando servicio desde '$registeredFullPath' hacia '$currentFullPath'..."
+        Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 1
+        & sc.exe delete $ServiceName | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "No se pudo eliminar el registro anterior del servicio. Codigo $LASTEXITCODE."
+        }
+
+        $deadline = [DateTime]::UtcNow.AddSeconds(20)
+        do {
+            Start-Sleep -Milliseconds 500
+            $existingService = Get-WmiObject Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+            if ([DateTime]::UtcNow -ge $deadline -and $existingService) {
+                throw "Windows no libero el registro anterior del servicio dentro de 20 segundos."
+            }
+        } while ($existingService)
+    }
+}
+
+$existingService = Get-WmiObject Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
+if (-not $existingService) {
     Write-Host "Instalando servicio Windows '$ServiceName'..."
     & $serviceExe install
     if ($LASTEXITCODE -ne 0) {
