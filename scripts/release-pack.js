@@ -58,6 +58,7 @@ function verifyEdition(releaseConfig, editionName) {
         'ExportadorMSMallService.exe',
         'install-startup-task.ps1',
         'remove-startup-task.ps1',
+        'reset-web-access.ps1',
         'frontend/dist/index.html',
         'config/default.json',
         'build-info.json',

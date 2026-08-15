@@ -1,4 +1,4 @@
-Exportador MSMall V16.3 Legacy-2008
+Exportador MSMall Legacy-2008
 
 Destino de compatibilidad:
 - Windows Server 2008 R2 x64 o superior.
@@ -16,3 +16,13 @@ Windows y continua ejecutando los jobs sin mantener una ventana abierta.
 
 Para SQL Server 2008 seleccione el perfil SQL Server 2008. Use TLS 1.0 heredado
 solo si el servidor no tiene las actualizaciones necesarias para TLS 1.2.
+
+Abra http://127.0.0.1:3000 para configurar el Exportador.
+
+SEGURIDAD WEB:
+- En el primer acceso debe crear una clave administrativa de 12 caracteres o mas.
+- La clave protege configuracion, consultas, logs, ejecucion manual y servicio.
+- Para controlar el servicio se solicita nuevamente la clave.
+- El dashboard solo escucha en el servidor local por defecto.
+- Si olvida la clave, ejecute reset-web-access.ps1 como Administrador. El script
+  conserva un respaldo de security.json y permite crear una clave nueva.

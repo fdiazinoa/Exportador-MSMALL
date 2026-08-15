@@ -1,5 +1,5 @@
 {
-  "name": "exportador-msmall-v16-legacy-2008",
+  "name": "exportador-msmall-legacy-2008",
   "version": "0.0.0",
   "private": true,
   "main": "index.js",
@@ -7,12 +7,15 @@
   "type": "commonjs",
   "dependencies": {
     "basic-ftp": "5.3.1",
-    "cors": "2.8.5",
     "express": "4.22.2",
+    "express-rate-limit": "5.5.1",
+    "express-session": "1.18.2",
     "fast-csv": "4.3.6",
     "mysql2": "3.23.3",
+    "helmet": "4.6.0",
     "node-cron": "3.0.1",
     "pg": "8.11.5",
+    "session-file-store": "1.5.0",
     "ssh2-sftp-client": "7.2.3",
     "tedious": "3.0.1",
     "winston": "3.8.2"

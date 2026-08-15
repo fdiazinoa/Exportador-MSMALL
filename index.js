@@ -18,22 +18,42 @@ const jobExecutor = require('./src/jobExecutor');
 const logger = require('./src/logger');
 
 const express = require('express');
-const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs');
 const apiRouter = require('./src/api');
 const { resolveRuntimePath } = require('./src/runtimePaths');
 const packageInfo = require('./package.json');
 const buildInfo = require('./src/buildInfo');
+const webSecurity = require('./src/webSecurity');
 
 async function startServer() {
     const app = express();
     const port = process.env.PORT || 3000;
+    const bindAddress = process.env.EXPORTADOR_BIND_ADDRESS || '127.0.0.1';
 
-    app.use(cors());
-    app.use(express.json());
+    app.disable('x-powered-by');
+    app.use(helmet({
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'"],
+                styleSrc: ["'self'"],
+                imgSrc: ["'self'", 'data:'],
+                connectSrc: ["'self'"],
+                objectSrc: ["'none'"],
+                frameAncestors: ["'none'"],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+            },
+        },
+    }));
+    app.use(express.json({ limit: '2mb' }));
+    app.use(webSecurity.createSessionMiddleware());
 
     // API Routes
+    app.use('/api/auth', webSecurity.authRouter);
+    app.use('/api', webSecurity.requireAuthenticated, webSecurity.requireCsrf);
     app.use('/api', apiRouter);
 
     // Serve Frontend
@@ -49,10 +69,10 @@ async function startServer() {
 
     return new Promise((resolve, reject) => {
         let started = false;
-        const server = app.listen(port);
+        const server = app.listen(port, bindAddress);
         server.once('listening', () => {
             started = true;
-            logger.info(`Configuration Dashboard running at http://localhost:${port}`);
+            logger.info(`Configuration Dashboard running at http://${bindAddress}:${port}`);
             resolve(server);
         });
         server.on('error', error => {

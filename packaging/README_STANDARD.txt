@@ -1,4 +1,4 @@
-Exportador MSMall V16.3 Standard
+Exportador MSMall Standard
 
 Destino recomendado:
 - Windows Server 2016 o superior, x64.
@@ -11,4 +11,12 @@ Como alternativa, abra PowerShell como administrador y ejecute:
 El servicio se registra como ExportadorMSMall, inicia automaticamente con
 Windows y continua ejecutando los jobs sin mantener una ventana abierta.
 
-Abra http://localhost:3000 para configurar el Exportador.
+Abra http://127.0.0.1:3000 para configurar el Exportador.
+
+SEGURIDAD WEB:
+- En el primer acceso debe crear una clave administrativa de 12 caracteres o mas.
+- La clave protege configuracion, consultas, logs, ejecucion manual y servicio.
+- Para controlar el servicio se solicita nuevamente la clave.
+- El dashboard solo escucha en el servidor local por defecto.
+- Si olvida la clave, ejecute reset-web-access.ps1 como Administrador. El script
+  conserva un respaldo de security.json y permite crear una clave nueva.

@@ -1,5 +1,4 @@
 const express = require('express');
-const cors = require('cors');
 const fs = require('fs');
 const configLoader = require('./configLoader');
 const dbFactory = require('./dbFactory');
@@ -11,6 +10,7 @@ const jobExecutor = require('./jobExecutor');
 const packageInfo = require('../package.json');
 const buildInfo = require('./buildInfo');
 const { readLog, resolveLogFile } = require('./logReader');
+const { requireRecentReauthentication, audit } = require('./webSecurity');
 
 const router = express.Router();
 
@@ -65,7 +65,6 @@ router.get('/health', (req, res) => {
         version: packageInfo.version,
         edition: buildInfo.edition,
         runtimeMode: windowsServiceManager.isRunningAsService() ? 'service' : 'interactive',
-        jobs: jobExecutor.status(),
     });
 });
 
@@ -78,9 +77,10 @@ router.get('/service-mode/status', async (req, res) => {
     }
 });
 
-router.post('/service-mode/install', requireLocalServiceControl, async (req, res) => {
+router.post('/service-mode/install', requireLocalServiceControl, requireRecentReauthentication, async (req, res) => {
     try {
         const result = await windowsServiceManager.install();
+        audit('service_install', req, 'success');
         res.json(result);
         if (result.handoff) {
             logger.info('Service handoff scheduled. Closing the interactive process to release dashboard port 3000.');
@@ -92,22 +92,26 @@ router.post('/service-mode/install', requireLocalServiceControl, async (req, res
     }
 });
 
-router.post('/service-mode/uninstall', requireLocalServiceControl, async (req, res) => {
+router.post('/service-mode/uninstall', requireLocalServiceControl, requireRecentReauthentication, async (req, res) => {
     try {
-        res.json(await windowsServiceManager.uninstall());
+        const result = await windowsServiceManager.uninstall();
+        audit('service_uninstall', req, 'success');
+        res.json(result);
     } catch (error) {
         logger.error(`Error uninstalling Windows service: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 });
 
-router.post('/service-mode/:action', requireLocalServiceControl, async (req, res) => {
+router.post('/service-mode/:action', requireLocalServiceControl, requireRecentReauthentication, async (req, res) => {
     const action = String(req.params.action || '').toLowerCase();
     if (!['start', 'stop', 'restart'].includes(action)) {
         return res.status(404).json({ error: 'Service action not found' });
     }
     try {
-        return res.json(await windowsServiceManager.control(action));
+        const result = await windowsServiceManager.control(action);
+        audit(`service_${action}`, req, 'success');
+        return res.json(result);
     } catch (error) {
         logger.error(`Error controlling Windows service: ${error.message}`);
         return res.status(500).json({ error: error.message });
@@ -153,6 +157,7 @@ router.post('/config', (req, res) => {
         configLoader.load();
 
         logger.info('Configuration updated via API.');
+        audit('config_update', req, 'success');
         res.json({ message: 'Configuration saved.' });
     } catch (error) {
         logger.error(`Error saving config: ${error.message}`);
