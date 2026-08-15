@@ -26,10 +26,10 @@ function resolveDestinationTarget(config, destinationType, destinationValue) {
   }
 
   // Legacy inference by existing config maps.
-  if (config?.ftpServers && config.ftpServers[raw]) {
+  if (config && config.ftpServers && config.ftpServers[raw]) {
     return { type: 'ftp', key: raw };
   }
-  if (config?.webServices && config.webServices[raw]) {
+  if (config && config.webServices && config.webServices[raw]) {
     return { type: 'webservice', key: raw };
   }
 

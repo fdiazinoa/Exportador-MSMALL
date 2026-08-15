@@ -1,11 +1,14 @@
-import { LoaderCircle, Save } from 'lucide-react'
+import { LoaderCircle, LogOut, Save } from 'lucide-react'
 
 export default function ConfigLayout({
   children,
   onSave,
   saving = false,
   saveDisabled = false,
+  onLogout,
 }) {
+  const currentYear = new Date().getFullYear()
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/95 backdrop-blur">
@@ -15,19 +18,24 @@ export default function ConfigLayout({
               Configuración MsExportador
             </h1>
             <p className="mt-1 text-sm text-gray-500">
-              Administra conexiones de base de datos, FTP y web services desde una sola vista.
+              Administra conexiones y jobs de sincronización desde una sola vista.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={saveDisabled || saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? 'Guardando...' : 'Guardar Cambios'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onLogout} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Cerrar sesión">
+              <LogOut className="h-4 w-4" /><span className="hidden sm:inline">Salir</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saveDisabled || saving}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? 'Guardando...' : 'Guardar Cambios'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -35,6 +43,14 @@ export default function ConfigLayout({
         <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(circle_at_top,_rgba(37,99,235,0.12),transparent_65%)]" />
         <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">{children}</div>
       </main>
+
+      <footer className="border-t border-gray-200 bg-white/80">
+        <div className="mx-auto max-w-5xl px-4 py-4 text-center sm:px-6 lg:px-8">
+          <p className="text-xs font-medium tracking-wide text-gray-500">
+            Copyright © {currentYear} MercaSend, SRL. Todos los derechos reservados.
+          </p>
+        </div>
+      </footer>
     </div>
   )
 }
