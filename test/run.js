@@ -15,6 +15,10 @@ const configLoader = require('../src/configLoader');
 const webServiceAuth = require('../src/webServiceAuth');
 const windowsServiceManager = require('../src/windowsServiceManager');
 const { parseVersion, loadReleaseConfig } = require('../scripts/release-config');
+const { SecurityStore } = require('../src/securityStore');
+const express = require('express');
+const webSecurity = require('../src/webSecurity');
+const { securityStore } = require('../src/securityStore');
 
 const tests = [];
 function test(name, fn) {
@@ -140,6 +144,7 @@ test('Windows service assets are present and configured for automatic startup', 
     const installScript = fs.readFileSync(path.join(__dirname, '..', 'packaging', 'install-startup-task.ps1'), 'utf8');
     const handoffScript = fs.readFileSync(path.join(__dirname, '..', 'packaging', 'start-service-after-exit.ps1'), 'utf8');
     const buildScript = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'build-edition.js'), 'utf8');
+    const resetAccessScript = fs.readFileSync(path.join(__dirname, '..', 'packaging', 'reset-web-access.ps1'), 'utf8');
     assert.strictEqual(fs.existsSync(wrapperPath), true);
     assert.strictEqual(
         crypto.createHash('sha256').update(fs.readFileSync(wrapperPath)).digest('hex'),
@@ -158,6 +163,79 @@ test('Windows service assets are present and configured for automatic startup', 
     assert.strictEqual(handoffScript.includes('Start-Process -FilePath $appExe'), true);
     assert.strictEqual(buildScript.includes("'ExportadorMSMallService.exe'"), true);
     assert.strictEqual(buildScript.includes("'start-service-after-exit.ps1'"), true);
+    assert.strictEqual(buildScript.includes("'reset-web-access.ps1'"), true);
+    assert.strictEqual(resetAccessScript.includes('#Requires -RunAsAdministrator'), true);
+    assert.strictEqual(resetAccessScript.includes('config\\security.json'), true);
+});
+
+test('Administrative password is stored as a salted scrypt hash', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exportador-security-'));
+    const securityPath = path.join(tempDir, 'security.json');
+    const store = new SecurityStore(securityPath);
+    const password = 'Clave segura 2026!';
+    try {
+        await assert.rejects(store.create('corta'), error => error.code === 'WEAK_PASSWORD');
+        await store.create(password);
+        const raw = fs.readFileSync(securityPath, 'utf8');
+        const record = JSON.parse(raw);
+        assert.strictEqual(raw.includes(password), false);
+        assert.strictEqual(record.password.algorithm, 'scrypt');
+        assert.strictEqual(Buffer.from(record.password.salt, 'base64').length, 32);
+        assert.strictEqual(await store.verify(password), true);
+        assert.strictEqual(await store.verify('Clave incorrecta 2026!'), false);
+        await assert.rejects(store.create(password), error => error.code === 'ALREADY_CONFIGURED');
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+});
+
+test('Dashboard API requires authentication and CSRF protection', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exportador-auth-api-'));
+    const originalSecurityPath = securityStore.filePath;
+    securityStore.filePath = path.join(tempDir, 'security.json');
+    const app = express();
+    app.use(express.json());
+    app.use(webSecurity.createSessionMiddleware({ sessionsPath: path.join(tempDir, 'sessions'), secret: 'test-session-secret-with-sufficient-length' }));
+    app.use('/api/auth', webSecurity.authRouter);
+    app.use('/api', webSecurity.requireAuthenticated, webSecurity.requireCsrf);
+    app.get('/api/health', (req, res) => res.json({ ok: true }));
+    app.get('/api/protected', (req, res) => res.json({ protected: true }));
+    app.post('/api/protected', (req, res) => res.json({ changed: true }));
+    const server = http.createServer(app);
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const request = (method, route, body, headers) => new Promise((resolve, reject) => {
+        const payload = body ? JSON.stringify(body) : '';
+        const call = http.request({
+            host: '127.0.0.1', port: server.address().port, path: route, method,
+            headers: Object.assign({ 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }, headers || {}),
+        }, response => {
+            let data = '';
+            response.on('data', chunk => { data += chunk; });
+            response.on('end', () => resolve({ status: response.statusCode, headers: response.headers, body: data ? JSON.parse(data) : {} }));
+        });
+        call.on('error', reject);
+        if (payload) call.write(payload);
+        call.end();
+    });
+
+    try {
+        assert.strictEqual((await request('GET', '/api/health')).status, 200);
+        assert.strictEqual((await request('GET', '/api/protected')).status, 428);
+        const setup = await request('POST', '/api/auth/setup', { password: 'Clave segura 2026!' });
+        assert.strictEqual(setup.status, 201);
+        const cookie = setup.headers['set-cookie'][0].split(';')[0];
+        assert.strictEqual((await request('GET', '/api/protected', null, { Cookie: cookie })).status, 200);
+        assert.strictEqual((await request('POST', '/api/protected', {}, { Cookie: cookie })).status, 403);
+        assert.strictEqual((await request('POST', '/api/protected', {}, { Cookie: cookie, 'X-Exportador-CSRF': setup.body.csrfToken })).status, 200);
+        const stepUpRequest = { session: { reauthenticatedAt: 0 } };
+        let stepUpStatus;
+        webSecurity.requireRecentReauthentication(stepUpRequest, { status: code => ({ json: () => { stepUpStatus = code; } }) }, () => { stepUpStatus = 200; });
+        assert.strictEqual(stepUpStatus, 403);
+    } finally {
+        securityStore.filePath = originalSecurityPath;
+        await new Promise(resolve => server.close(resolve));
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
 });
 
 test('Dashboard startup reports port conflicts in the application log', () => {
