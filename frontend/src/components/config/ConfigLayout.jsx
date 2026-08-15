@@ -1,10 +1,11 @@
-import { LoaderCircle, Save } from 'lucide-react'
+import { LoaderCircle, LogOut, Save } from 'lucide-react'
 
 export default function ConfigLayout({
   children,
   onSave,
   saving = false,
   saveDisabled = false,
+  onLogout,
 }) {
   const currentYear = new Date().getFullYear()
 
@@ -21,15 +22,20 @@ export default function ConfigLayout({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={saveDisabled || saving}
-            className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {saving ? 'Guardando...' : 'Guardar Cambios'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onLogout} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50" title="Cerrar sesión">
+              <LogOut className="h-4 w-4" /><span className="hidden sm:inline">Salir</span>
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saveDisabled || saving}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            >
+              {saving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {saving ? 'Guardando...' : 'Guardar Cambios'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -48,4 +54,3 @@ export default function ConfigLayout({
     </div>
   )
 }
-

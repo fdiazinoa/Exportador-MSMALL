@@ -20,6 +20,8 @@ import {
   UploadCloud,
 } from 'lucide-react'
 import ConfigLayout from './components/config/ConfigLayout'
+import AuthScreen from './components/auth/AuthScreen'
+import PasswordConfirmModal from './components/auth/PasswordConfirmModal'
 import ConnectionCard from './components/config/ConnectionCard'
 import ConnectionSection from './components/config/ConnectionSection'
 import FormField, { checkboxBaseClassName, inputBaseClassName } from './components/config/FormField'
@@ -27,7 +29,7 @@ import SecretField from './components/config/SecretField'
 import ToastMessage from './components/config/ToastMessage'
 import { cn } from './lib/cn'
 
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3000')
+const API_URL = import.meta.env.VITE_API_URL || ''
 const emptyLogs = { entries: [], exists: false, fileName: '' }
 
 function createWebServiceTemplate() {
@@ -94,6 +96,12 @@ function App() {
   const [serviceModeStatus, setServiceModeStatus] = useState(null)
   const [serviceModeLoading, setServiceModeLoading] = useState(false)
   const [serviceModeAction, setServiceModeAction] = useState('')
+  const [authStatus, setAuthStatus] = useState(null)
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authError, setAuthError] = useState('')
+  const [pendingServiceAction, setPendingServiceAction] = useState('')
+  const [servicePassword, setServicePassword] = useState('')
+  const [servicePasswordError, setServicePasswordError] = useState('')
 
   const notify = useCallback((type, title, message = '') => {
     setToast({ type, title, message })
@@ -101,17 +109,65 @@ function App() {
   }, [])
 
   useEffect(() => {
-    Promise.all([
-      axios.get(`${API_URL}/api/config`),
-      axios.get(`${API_URL}/api/health`).catch(() => ({ data: null })),
-    ])
-      .then(([configResponse, healthResponse]) => {
-        setConfig(configResponse.data)
+    Promise.all([axios.get(`${API_URL}/api/auth/status`), axios.get(`${API_URL}/api/health`).catch(() => ({ data: null }))])
+      .then(async ([authResponse, healthResponse]) => {
+        const status = authResponse.data
+        setAuthStatus(status)
         setHealth(healthResponse.data)
+        if (status.authenticated) {
+          axios.defaults.headers.common['X-Exportador-CSRF'] = status.csrfToken
+          const configResponse = await axios.get(`${API_URL}/api/config`)
+          setConfig(configResponse.data)
+        }
       })
-      .catch(error => notify('error', 'No se pudo cargar la configuración', errorMessage(error)))
+      .catch(error => {
+        setAuthError(errorMessage(error))
+        setAuthStatus({ configured: true, authenticated: false })
+      })
       .finally(() => setLoading(false))
   }, [notify])
+
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(response => response, error => {
+      const isAuthRequest = String(error.config?.url || '').includes('/api/auth/')
+      if (error.response?.status === 401 && !isAuthRequest) {
+        delete axios.defaults.headers.common['X-Exportador-CSRF']
+        setConfig(null)
+        setAuthStatus(current => ({ ...(current || {}), configured: true, authenticated: false }))
+      }
+      return Promise.reject(error)
+    })
+    return () => axios.interceptors.response.eject(interceptor)
+  }, [])
+
+  const handleAuthenticate = async password => {
+    setAuthLoading(true)
+    setAuthError('')
+    try {
+      const setup = authStatus && !authStatus.configured
+      const response = await axios.post(`${API_URL}/api/auth/${setup ? 'setup' : 'login'}`, { password })
+      axios.defaults.headers.common['X-Exportador-CSRF'] = response.data.csrfToken
+      const [configResponse, statusResponse] = await Promise.all([
+        axios.get(`${API_URL}/api/config`),
+        axios.get(`${API_URL}/api/auth/status`),
+      ])
+      setConfig(configResponse.data)
+      setAuthStatus(statusResponse.data)
+      return true
+    } catch (error) {
+      setAuthError(errorMessage(error))
+      return false
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const handleLogout = async () => {
+    try { await axios.post(`${API_URL}/api/auth/logout`) } catch { /* The local session is cleared below. */ }
+    delete axios.defaults.headers.common['X-Exportador-CSRF']
+    setConfig(null)
+    setAuthStatus(current => ({ ...(current || {}), configured: true, authenticated: false, csrfToken: undefined }))
+  }
 
   const fetchLogs = useCallback(async () => {
     setLogsLoading(true)
@@ -152,12 +208,24 @@ function App() {
     if (activeTab === 'services') refreshServiceModeStatus()
   }, [activeTab, refreshServiceModeStatus])
 
-  const handleServiceModeAction = async action => {
+  const requestServiceModeAction = action => {
     if (action === 'uninstall' && !window.confirm('¿Deseas quitar el servicio Windows ExportadorMSMall?')) return
+    setPendingServiceAction(action)
+    setServicePassword('')
+    setServicePasswordError('')
+  }
+
+  const handleServiceModeAction = async () => {
+    const action = pendingServiceAction
+    if (!action) return
 
     setServiceModeAction(action)
+    setServicePasswordError('')
     try {
+      await axios.post(`${API_URL}/api/auth/reauthenticate`, { password: servicePassword })
       const response = await axios.post(`${API_URL}/api/service-mode/${action}`)
+      setPendingServiceAction('')
+      setServicePassword('')
       setServiceModeStatus(response.data.status)
       if (action === 'install' && response.data.handoff) {
         notify('success', 'Servicio instalado', 'Realizando el traspaso al servicio Windows…')
@@ -193,8 +261,12 @@ function App() {
       }
       notify('success', labels[action] || 'Servicio actualizado', response.data.message)
     } catch (error) {
-      notify('error', 'No se pudo administrar el servicio', errorMessage(error))
-      await refreshServiceModeStatus()
+      if (error.response?.status === 401) setServicePasswordError(errorMessage(error))
+      else {
+        notify('error', 'No se pudo administrar el servicio', errorMessage(error))
+        setPendingServiceAction('')
+        await refreshServiceModeStatus()
+      }
     } finally {
       setServiceModeAction('')
     }
@@ -377,9 +449,13 @@ function App() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 text-gray-600">
         <LoaderCircle className="mr-3 h-5 w-5 animate-spin" />
-        Cargando Exportador V16...
+        Cargando Exportador...
       </div>
     )
+  }
+
+  if (!authStatus?.authenticated) {
+    return <AuthScreen status={authStatus} loading={authLoading} error={authError} onSubmit={handleAuthenticate} />
   }
 
   if (!config) {
@@ -428,14 +504,25 @@ function App() {
           : serviceStateLabels[serviceModeStatus.state] || (serviceModeInstalled ? 'Instalado' : 'No instalado')
 
   return (
-    <ConfigLayout onSave={() => saveConfig()} saving={saving} saveDisabled={!config}>
+    <ConfigLayout onSave={() => saveConfig()} saving={saving} saveDisabled={!config} onLogout={handleLogout}>
       <ToastMessage toast={toast} />
+      {pendingServiceAction ? (
+        <PasswordConfirmModal
+          actionLabel={{ install: 'Instalar el servicio', uninstall: 'Quitar el servicio', start: 'Iniciar el servicio', stop: 'Detener el servicio', restart: 'Reiniciar el servicio' }[pendingServiceAction] || 'Administrar el servicio'}
+          password={servicePassword}
+          loading={Boolean(serviceModeAction)}
+          error={servicePasswordError}
+          onPasswordChange={setServicePassword}
+          onCancel={() => { if (!serviceModeAction) setPendingServiceAction('') }}
+          onConfirm={handleServiceModeAction}
+        />
+      ) : null}
 
       <div className="mb-8 flex flex-col gap-4 rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-blue-50 p-2.5 text-blue-700"><Server className="h-5 w-5" /></div>
           <div>
-            <p className="text-sm font-semibold text-gray-950">Exportador V{health?.version || '16.3'}</p>
+            <p className="text-sm font-semibold text-gray-950">Exportador V{health?.version || '17.0'}</p>
             <p className="text-xs text-gray-500">Edición {health?.edition || 'Standard'} · {health?.ok ? 'Servicio disponible' : 'Estado no disponible'}</p>
           </div>
         </div>
@@ -587,7 +674,7 @@ function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleServiceModeAction(servicePrimaryAction)}
+                  onClick={() => requestServiceModeAction(servicePrimaryAction)}
                   disabled={serviceModeLoading || Boolean(serviceModeAction) || !serviceModeSupported}
                   className={cn(
                     'inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white disabled:opacity-60',
@@ -621,13 +708,13 @@ function App() {
 
               {serviceModeCurrent ? (
                 <div className="col-span-12 flex flex-wrap gap-2">
-                  <button type="button" onClick={() => handleServiceModeAction('start')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+                  <button type="button" onClick={() => requestServiceModeAction('start')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
                     <Play className="h-4 w-4" /> Iniciar
                   </button>
-                  <button type="button" onClick={() => handleServiceModeAction('stop')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+                  <button type="button" onClick={() => requestServiceModeAction('stop')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
                     <Square className="h-4 w-4" /> Detener
                   </button>
-                  <button type="button" onClick={() => handleServiceModeAction('restart')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+                  <button type="button" onClick={() => requestServiceModeAction('restart')} disabled={Boolean(serviceModeAction)} className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
                     <RotateCw className="h-4 w-4" /> Reiniciar
                   </button>
                 </div>
