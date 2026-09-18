@@ -2,10 +2,11 @@ const fs = require('fs');
 const path = require('path');
 const { writeToPath } = require('fast-csv');
 const logger = require('./logger');
+const { resolveRuntimePath } = require('./runtimePaths');
 
 class FileExporter {
     constructor() {
-        this.outputDir = 'exports';
+        this.outputDir = resolveRuntimePath('exports');
         if (!fs.existsSync(this.outputDir)) {
             fs.mkdirSync(this.outputDir);
         }

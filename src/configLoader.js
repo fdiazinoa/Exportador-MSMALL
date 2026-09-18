@@ -1,10 +1,10 @@
 const fs = require('fs');
-const path = require('path');
 const logger = require('./logger');
+const { resolveRuntimePath } = require('./runtimePaths');
 
 class ConfigLoader {
     constructor() {
-        this.configPath = path.join(process.cwd(), 'config', 'default.json');
+        this.configPath = resolveRuntimePath('config', 'default.json');
         this.config = {};
     }
 

@@ -1,5 +1,5 @@
-// Polyfill for AbortSignal.any (Node 18 support)
-if (!AbortSignal.any) {
+// Polyfill only when AbortSignal exists. Legacy-2008 uses an older runtime.
+if (typeof AbortSignal !== 'undefined' && !AbortSignal.any) {
     AbortSignal.any = function (signals) {
         const controller = new AbortController();
         for (const signal of signals) {
@@ -14,27 +14,50 @@ if (!AbortSignal.any) {
 }
 
 const configLoader = require('./src/configLoader');
-const { runJob } = require('./src/jobRunner');
+const jobExecutor = require('./src/jobExecutor');
 const logger = require('./src/logger');
 
 const express = require('express');
-const cors = require('cors');
+const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs');
 const apiRouter = require('./src/api');
+const { resolveRuntimePath } = require('./src/runtimePaths');
+const packageInfo = require('./package.json');
+const buildInfo = require('./src/buildInfo');
+const webSecurity = require('./src/webSecurity');
 
 async function startServer() {
     const app = express();
     const port = process.env.PORT || 3000;
+    const bindAddress = process.env.EXPORTADOR_BIND_ADDRESS || '127.0.0.1';
 
-    app.use(cors());
-    app.use(express.json());
+    app.disable('x-powered-by');
+    app.use(helmet({
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'"],
+                styleSrc: ["'self'"],
+                imgSrc: ["'self'", 'data:'],
+                connectSrc: ["'self'"],
+                objectSrc: ["'none'"],
+                frameAncestors: ["'none'"],
+                baseUri: ["'self'"],
+                formAction: ["'self'"],
+            },
+        },
+    }));
+    app.use(express.json({ limit: '2mb' }));
+    app.use(webSecurity.createSessionMiddleware());
 
     // API Routes
+    app.use('/api/auth', webSecurity.authRouter);
+    app.use('/api', webSecurity.requireAuthenticated, webSecurity.requireCsrf);
     app.use('/api', apiRouter);
 
     // Serve Frontend
-    const frontendPath = path.join(__dirname, 'frontend/dist');
+    const frontendPath = resolveRuntimePath('frontend', 'dist');
     if (fs.existsSync(frontendPath)) {
         app.use(express.static(frontendPath));
         app.get(/.*/, (req, res) => {
@@ -44,18 +67,28 @@ async function startServer() {
         logger.warn('Frontend build not found. Run "npm run build" in frontend directory.');
     }
 
-    app.listen(port, () => {
-        logger.info(`Configuration Dashboard running at http://localhost:${port}`);
+    return new Promise((resolve, reject) => {
+        let started = false;
+        const server = app.listen(port, bindAddress);
+        server.once('listening', () => {
+            started = true;
+            logger.info(`Configuration Dashboard running at http://${bindAddress}:${port}`);
+            resolve(server);
+        });
+        server.on('error', error => {
+            logger.error(`Dashboard API could not listen on port ${port}: ${error.code || error.message}. runtimeMode=${process.env.EXPORTADOR_RUN_MODE || 'interactive'}`);
+            if (!started) reject(error);
+        });
     });
 }
 
 const cron = require('node-cron');
 
 async function main() {
-    logger.info('Exportador MSMall Service started.');
+    logger.info(`Exportador MSMall V${packageInfo.version} started. edition=${buildInfo.edition}`);
 
     // Start the Web Server
-    startServer();
+    await startServer();
 
     const args = process.argv.slice(2);
     const runOnce = args.includes('--run-once');
@@ -70,7 +103,7 @@ async function main() {
         logger.info('Running in CLI mode (Run Once).');
         if (config.jobs) {
             for (const job of config.jobs) {
-                await runJob(job.name);
+                await jobExecutor.execute(job.name);
             }
         }
         logger.info('All jobs finished. Exiting.');
@@ -83,7 +116,7 @@ async function main() {
             for (const job of config.jobs) {
                 if (job.schedule) {
                     logger.info(`Scheduling job '${job.name}' with cron: ${job.schedule}`);
-                    cron.schedule(job.schedule, () => {
+                    cron.schedule(job.schedule, async () => {
                         // Reload config to get latest updates (e.g. query changes)
                         // Note: If schedule changes, we'd need to restart the cron task. 
                         // For simplicity, we assume schedule changes require service restart or we could implement a dynamic re-scheduler.
@@ -91,7 +124,15 @@ async function main() {
                         const currentConfig = configLoader.load();
                         const currentJob = currentConfig.jobs.find(j => j.name === job.name);
                         if (currentJob) {
-                            runJob(currentJob.name);
+                            try {
+                                await jobExecutor.execute(currentJob.name);
+                            } catch (error) {
+                                if (error.code === 'JOB_ALREADY_RUNNING') {
+                                    logger.warn(`Skipping overlapping schedule for '${currentJob.name}'.`);
+                                } else {
+                                    logger.error(`Scheduled job '${currentJob.name}' failed: ${error.message}`);
+                                }
+                            }
                         }
                     });
                 } else {

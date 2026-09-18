@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, LoaderCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, LoaderCircle, Trash2 } from 'lucide-react'
 import { cn } from '../../lib/cn'
 
 const toneClassNames = {
@@ -20,8 +20,12 @@ export default function ConnectionCard({
   typeLabel,
   tone = 'slate',
   onTest,
+  onDelete,
+  deleteTitle,
+  description = 'La clave se conserva para mantener compatibles los jobs existentes.',
   testing = false,
   status,
+  notice,
   children,
 }) {
   const statusTone = status?.type ? statusClassNames[status.type] : null
@@ -32,9 +36,7 @@ export default function ConnectionCard({
       <div className="flex flex-col gap-4 border-b border-gray-100 pb-5 md:flex-row md:items-start md:justify-between">
         <div>
           <h3 className="text-lg font-semibold text-gray-950">{name}</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Connection key preserved for existing jobs and service references.
-          </p>
+          <p className="mt-1 text-sm text-gray-500">{description}</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -47,19 +49,39 @@ export default function ConnectionCard({
             {typeLabel}
           </span>
 
-          <button
-            type="button"
-            onClick={onTest}
-            disabled={testing}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {testing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-            {testing ? 'Testing...' : 'Test Connection'}
-          </button>
+          {onTest ? (
+            <button
+              type="button"
+              onClick={onTest}
+              disabled={testing}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:border-gray-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {testing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+              {testing ? 'Probando...' : 'Probar conexión'}
+            </button>
+          ) : null}
+
+          {onDelete ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              title={deleteTitle}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 transition hover:border-red-300 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Eliminar
+            </button>
+          ) : null}
         </div>
       </div>
 
       <div className="mt-6 grid grid-cols-12 gap-4">{children}</div>
+
+      {notice ? (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {notice}
+        </div>
+      ) : null}
 
       {status?.message ? (
         <div
