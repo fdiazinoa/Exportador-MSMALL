@@ -25,6 +25,24 @@ function test(name, fn) {
     tests.push({ name, fn });
 }
 
+test('New dashboard connections preserve existing entries and use unique keys', async () => {
+    const { addNamedConnection, createDatabaseTemplate, createFtpTemplate } = await import('../frontend/src/lib/connectionTemplates.js');
+    const existing = { sqlserver_new: { provider: 'sqlserver', config: { server: 'SQL01' } } };
+    const updated = addNamedConnection(existing, 'sqlserver_new', createDatabaseTemplate());
+    assert.strictEqual(updated.sqlserver_new, existing.sqlserver_new);
+    assert.strictEqual(Object.keys(existing).length, 1);
+    assert.strictEqual(updated.sqlserver_new_2.config.server, '');
+    const third = addNamedConnection(updated, 'sqlserver_new', createDatabaseTemplate());
+    assert.strictEqual(third.sqlserver_new_3.provider, 'sqlserver');
+    for (const provider of ['mysql', 'postgres']) {
+        assert.strictEqual(createDatabaseTemplate(provider).config.host, '');
+    }
+    assert.strictEqual(createDatabaseTemplate().config.options.encrypt, true);
+    assert.strictEqual(createFtpTemplate().port, 21);
+    assert.strictEqual(Object.keys(addNamedConnection(undefined, 'ftp_new', createFtpTemplate())).length, 1);
+    assert.throws(() => createDatabaseTemplate('unknown'));
+});
+
 test('SQL Server 2008 uses TDS 7.3A and legacy timeout defaults', () => {
     const result = normalizeSqlServerConfig({
         server: 'SQL01\\MSSQLSERVER',
