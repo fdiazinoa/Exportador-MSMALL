@@ -28,6 +28,7 @@ import FormField, { checkboxBaseClassName, inputBaseClassName } from './componen
 import SecretField from './components/config/SecretField'
 import ToastMessage from './components/config/ToastMessage'
 import { cn } from './lib/cn'
+import { addNamedConnection, createDatabaseTemplate, createFtpTemplate } from './lib/connectionTemplates'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 const emptyLogs = { entries: [], exists: false, fileName: '' }
@@ -102,6 +103,7 @@ function App() {
   const [pendingServiceAction, setPendingServiceAction] = useState('')
   const [servicePassword, setServicePassword] = useState('')
   const [servicePasswordError, setServicePasswordError] = useState('')
+  const [newDatabaseProvider, setNewDatabaseProvider] = useState('sqlserver')
 
   const notify = useCallback((type, title, message = '') => {
     setToast({ type, title, message })
@@ -310,6 +312,20 @@ function App() {
         ...database.config,
         options: { ...(database.config.options || {}), [field]: value },
       },
+    }))
+  }
+
+  const addDatabase = () => {
+    setConfig(current => ({
+      ...current,
+      databases: addNamedConnection(current.databases, `${newDatabaseProvider}_new`, createDatabaseTemplate(newDatabaseProvider)),
+    }))
+  }
+
+  const addFtp = () => {
+    setConfig(current => ({
+      ...current,
+      ftpServers: addNamedConnection(current.ftpServers, 'ftp_new', createFtpTemplate()),
     }))
   }
 
@@ -558,7 +574,23 @@ function App() {
 
       {activeTab === 'connections' ? (
         <div className="space-y-10">
-          <ConnectionSection icon={Database} title="Conexiones de base de datos" description="Orígenes usados por los jobs de exportación." isEmpty={!databases.length} emptyMessage="No hay conexiones configuradas.">
+          <ConnectionSection
+            icon={Database}
+            title="Conexiones de base de datos"
+            description="Orígenes usados por los jobs de exportación. Guarda los cambios antes de probar una conexión nueva."
+            isEmpty={!databases.length}
+            emptyMessage="No hay conexiones configuradas."
+            actions={(
+              <>
+                <select aria-label="Proveedor de la nueva conexión" className={inputBaseClassName} value={newDatabaseProvider} onChange={event => setNewDatabaseProvider(event.target.value)}>
+                  <option value="sqlserver">SQL Server</option>
+                  <option value="mysql">MySQL</option>
+                  <option value="postgres">PostgreSQL</option>
+                </select>
+                <button type="button" onClick={addDatabase} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Plus className="h-4 w-4" /> Agregar conexión</button>
+              </>
+            )}
+          >
             {databases.map(([key, database]) => {
               const db = database.config || {}
               const statusKey = `db:${key}`
@@ -627,7 +659,14 @@ function App() {
             })}
           </ConnectionSection>
 
-          <ConnectionSection icon={UploadCloud} title="Servidores FTP" description="Destinos FTP, FTPS y SFTP de las exportaciones." isEmpty={!ftpServers.length} emptyMessage="No hay servidores FTP configurados.">
+          <ConnectionSection
+            icon={UploadCloud}
+            title="Servidores FTP"
+            description="Destinos FTP, FTPS y SFTP de las exportaciones. Guarda los cambios antes de probar un servidor nuevo."
+            isEmpty={!ftpServers.length}
+            emptyMessage="No hay servidores FTP configurados."
+            actions={<button type="button" onClick={addFtp} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Plus className="h-4 w-4" /> Agregar servidor FTP</button>}
+          >
             {ftpServers.map(([key, ftp]) => {
               const statusKey = `ftp:${key}`
               return (
