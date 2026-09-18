@@ -263,6 +263,8 @@ test('Dashboard startup reports port conflicts in the application log', () => {
 });
 
 test('Release protocol derives both editions and canonical path from package version', () => {
+    assert.strictEqual(parseVersion('17.0.0').label, '17.0');
+    assert.strictEqual(parseVersion('17.0.1').label, '17.0.1');
     const packageInfo = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
     const parsed = parseVersion(packageInfo.version);
     const release = loadReleaseConfig(path.join(__dirname, '..'));

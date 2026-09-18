@@ -6,7 +6,7 @@ function parseVersion(version) {
     if (!match) throw new Error(`Version invalida '${version}'. Use MAJOR.MINOR.PATCH.`);
     return {
         full: `${Number(match[1])}.${Number(match[2])}.${Number(match[3])}`,
-        label: `${Number(match[1])}.${Number(match[2])}`,
+        label: `${Number(match[1])}.${Number(match[2])}${Number(match[3]) ? `.${Number(match[3])}` : ''}`,
     };
 }
 
